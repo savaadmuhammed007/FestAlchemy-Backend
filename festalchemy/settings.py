@@ -66,15 +66,14 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'festalchemy.wsgi.application'
 
-# Database
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': config('DB_NAME', default='defaultdb'),
-        'USER': config('DB_USER', default='avnadmin'),
-        'PASSWORD': config('DB_PASSWORD', default='YOUR_AIVEN_PASSWORD_HERE'),
-        'HOST': config('DB_HOST', default='festalchemy-savaadmuhammed786-0b08.d.aivencloud.com'),
-        'PORT': config('DB_PORT', default='28632'),
+        'NAME': 'defaultdb',
+        'USER': 'avnadmin',
+        'PASSWORD': config('DB_PASSWORD', default=''),
+        'HOST': 'festalchemy-savaadmuhammed786-0b08.d.aivencloud.com',
+        'PORT': '28632',
         'OPTIONS': {
             'ssl_mode': 'REQUIRED',
         }
