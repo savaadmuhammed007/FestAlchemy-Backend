@@ -67,29 +67,19 @@ TEMPLATES = [
 WSGI_APPLICATION = 'festalchemy.wsgi.application'
 
 # Database
-DATABASE_URL = config(
-    'DATABASE_URL',
-    default='mysql://avnadmin:YOUR_AIVEN_PASSWORD_HERE@festalchemy-savaadmuhammed786-0b08.d.aivencloud.com:28632/defaultdb?ssl_mode=REQUIRED'
-)
-
-if dj_database_url:
-    DATABASES = {
-        'default': dj_database_url.config(default=DATABASE_URL)
-    }
-else:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.mysql',
-            'NAME': 'defaultdb',
-            'USER': 'avnadmin',
-            'PASSWORD': 'YOUR_AIVEN_PASSWORD_HERE',
-            'HOST': 'festalchemy-savaadmuhammed786-0b08.d.aivencloud.com',
-            'PORT': '28632',
-            'OPTIONS': {
-                'ssl_mode': 'REQUIRED',
-            }
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': config('DB_NAME', default='defaultdb'),
+        'USER': config('DB_USER', default='avnadmin'),
+        'PASSWORD': config('DB_PASSWORD', default='YOUR_AIVEN_PASSWORD_HERE'),
+        'HOST': config('DB_HOST', default='festalchemy-savaadmuhammed786-0b08.d.aivencloud.com'),
+        'PORT': config('DB_PORT', default='28632'),
+        'OPTIONS': {
+            'ssl_mode': 'REQUIRED',
         }
     }
+}
 
 # Password validation — all removed, any password is accepted
 AUTH_PASSWORD_VALIDATORS = []
