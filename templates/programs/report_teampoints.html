@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+
+{% block title %}Team Standings & Points Report - FestAlchemy{% endblock %}
+{% block page_title %}Team Points Standings{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Print Styles */
+    @media print {
+        body {
+            background: #ffffff !important;
+            color: #000000 !important;
+            font-size: 11pt !important;
+        }
+        .sidebar, .main-header, .mobile-header, .no-print, .btn {
+            display: none !important;
+        }
+        .main-panel {
+            margin-left: 0 !important;
+        }
+        .main-content {
+            padding: 0 !important;
+            max-width: 100% !important;
+        }
+        .glass-panel {
+            background: none !important;
+            border: none !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            margin-bottom: 2rem !important;
+        }
+        .print-header {
+            display: block !important;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+        .print-header h1 {
+            font-size: 24pt;
+            font-weight: bold;
+            margin-bottom: 0.25rem;
+            color: #000000 !important;
+        }
+        .print-header p {
+            color: #555555 !important;
+            font-size: 11pt;
+        }
+        table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+            margin-bottom: 1.5rem !important;
+            page-break-inside: avoid;
+        }
+        th, td {
+            padding: 8px 10px !important;
+            border-bottom: 1px solid #000000 !important;
+            color: #000000 !important;
+            background: none !important;
+        }
+        th {
+            border-bottom: 2px solid #000000 !important;
+        }
+        tr td:first-child, tr td:last-child {
+            border-radius: 0 !important;
+            border-left: none !important;
+            border-right: none !important;
+        }
+        .team-section {
+            page-break-inside: avoid !important;
+            margin-top: 2rem !important;
+        }
+    }
+    .print-header {
+        display: none;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Print Header (Hidden on screen) -->
+<div class="print-header">
+    <h1>FestAlchemy Team Points Standings Report</h1>
+    <p>Generated on: <span id="print-date"></span></p>
+</div>
+
+<div class="glass-panel">
+    <!-- Back and Print Actions -->
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 2rem;" class="no-print">
+        <a href="{% url 'reports_dashboard' %}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Back to Dashboard
+        </a>
+        <button onclick="window.print()" class="btn btn-success">
+            <i class="bi bi-printer"></i> Print Report
+        </button>
+    </div>
+
+    <!-- Leaderboard Standings Table -->
+    <h3 style="margin-bottom: 1.5rem; font-weight: 700; border-bottom: 1px solid var(--border-glass); padding-bottom: 0.5rem;">
+        Leaderboard Standings
+    </h3>
+
+    {% if team_points %}
+        <div class="table-responsive" style="margin-bottom: 3rem;">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 80px;">Pos</th>
+                        <th>Team Name</th>
+                        <th>Team Lead</th>
+                        <th>Total Points</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for tp in team_points %}
+                        <tr>
+                            <td>
+                                <strong style="font-size: 1.2rem; color: {% if forloop.counter == 1 %}var(--secondary){% elif forloop.counter == 2 %}#cbd5e1{% elif forloop.counter == 3 %}#b45309{% else %}var(--text-muted){% endif %};">
+                                    #{{ forloop.counter }}
+                                </strong>
+                            </td>
+                            <td><strong>{{ tp.team.name }}</strong></td>
+                            <td>{{ tp.team.teamlead.username }}</td>
+                            <td><strong style="font-size: 1.2rem; color: var(--primary);">{{ tp.total_points }} pts</strong></td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Team Breakdown Details -->
+        <h3 style="margin-bottom: 1.5rem; font-weight: 700; border-bottom: 1px solid var(--border-glass); padding-bottom: 0.5rem;" class="no-print">
+            Point Details Breakdown
+        </h3>
+
+        {% for tp in team_points %}
+            <div class="glass-panel team-section" style="background: rgba(255, 255, 255, 0.02); padding: 1.5rem; margin-bottom: 1.5rem; border-color: rgba(139, 92, 246, 0.15);">
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom: 1px solid var(--border-glass); padding-bottom: 0.75rem; margin-bottom: 1rem;">
+                    <h4 style="font-weight: 600; margin:0;">
+                        <i class="bi bi-people-fill" style="color: var(--primary); margin-right: 0.5rem;"></i> {{ tp.team.name }}
+                    </h4>
+                    <span class="badge badge-primary" style="font-size: 0.9rem; padding: 0.4rem 0.8rem;">{{ tp.total_points }} Points Total</span>
+                </div>
+
+                {% if tp.breakdown_list %}
+                    <div class="table-responsive">
+                        <table style="margin: 0;">
+                            <thead>
+                                <tr>
+                                    <th>Program Name</th>
+                                    <th>Participant Name</th>
+                                    <th>Rank Achieved</th>
+                                    <th>Points Earned</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in tp.breakdown_list %}
+                                    <tr>
+                                        <td><strong>{{ item.program }}</strong></td>
+                                        <td>{{ item.member }}</td>
+                                        <td>
+                                            {% if item.rank %}
+                                                Rank {{ item.rank }}
+                                            {% else %}
+                                                Grade Awarded
+                                            {% endif %}
+                                        </td>
+                                        <td><strong>+{{ item.points }}</strong></td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p style="color: var(--text-muted); font-style: italic; font-size: 0.9rem; margin: 0.5rem 0;">
+                        No points have been earned or published for this team yet.
+                    </p>
+                {% endif %}
+            </div>
+        {% endfor %}
+
+    {% else %}
+        <div style="text-align: center; padding: 3rem; color: var(--text-muted);">
+            <i class="bi bi-stars" style="font-size: 3rem; display: block; margin-bottom: 1rem;"></i>
+            No teams or standings records found.
+        </div>
+    {% endif %}
+</div>
+
+<script>
+    document.getElementById('print-date').innerText = new Date().toLocaleString();
+</script>
+{% endblock %}

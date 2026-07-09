@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}Spin Lot - FestAlchemy{% endblock %}
+
+{% block page_title %}<i class="bi bi-shuffle"></i> Spin Lot Management{% endblock %}
+
+{% block content %}
+<div class="glass-panel">
+    <p style="color:var(--text-muted); font-size:.85rem; margin-bottom: 1.2rem;">Choose a program to manage its participant spin lots.</p>
+    {% if programs %}
+    <div class="table-responsive">
+    <table>
+        <thead>
+            <tr>
+                <th>Program Name</th>
+                <th>Category</th>
+                <th style="text-align: center;">Registered</th>
+                <th style="text-align: center;">Spun / Called</th>
+                <th style="text-align: right;">Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in programs %}
+            <tr>
+                <td>
+                    <strong style="font-size: 1.05rem;">{{ p.name }}</strong>
+                </td>
+                <td>
+                    <span class="badge badge-primary">{{ p.category.name }}</span>
+                </td>
+                <td style="text-align: center;">
+                    <span class="badge badge-secondary">{{ p.registered_members.count }}</span>
+                </td>
+                <td style="text-align: center;">
+                    {% with p.calling_lists.count as spun_count %}
+                        {% if spun_count == p.registered_members.count and p.registered_members.count > 0 %}
+                            <span class="badge badge-success"><i class="bi bi-check-circle"></i> All Spun ({{ spun_count }})</span>
+                        {% else %}
+                            <span class="badge badge-warning">{{ spun_count }} / {{ p.registered_members.count }} spun</span>
+                        {% endif %}
+                    {% endwith %}
+                </td>
+                <td style="text-align: right;">
+                    <a href="{% url 'call_participant' p.pk %}" class="btn" style="padding:.45rem .8rem; font-size:.85rem;">
+                        <i class="bi bi-shuffle"></i> Spin Lot
+                    </a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="text-muted" style="text-align: center; padding: 2rem 0;">No programs registered yet.</p>
+    {% endif %}
+</div>
+{% endblock %}

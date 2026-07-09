@@ -1,0 +1,260 @@
+{% extends "base.html" %}
+{% block title %}FestAlchemy - Home{% endblock %}
+
+{% block page_title %}<i class="bi bi-house-door"></i> Home{% endblock %}
+
+{% block extra_css %}
+<style>
+.home-hero-grid {
+    display: grid;
+    grid-template-columns: 1fr 1.5fr;
+    gap: 2rem;
+    margin-bottom: 2rem;
+    align-items: start;
+}
+@media (max-width: 992px) {
+    .home-hero-grid {
+        grid-template-columns: 1fr;
+        gap: 1.5rem;
+    }
+}
+.points-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+}
+@media (max-width: 768px) {
+    .points-grid { grid-template-columns: 1fr; }
+}
+.rank-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.2rem;
+    height: 2.2rem;
+    border-radius: 50%;
+    font-weight: 800;
+    font-size: 0.95rem;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+}
+.rank-1 { background: linear-gradient(135deg, #FFD700, #FFA500); color: #111; }
+.rank-2 { background: linear-gradient(135deg, #C0C0C0, #A8A8A8); color: #111; }
+.rank-3 { background: linear-gradient(135deg, #CD7F32, #8B4513); color: #fff; }
+.rank-other { background: rgba(255, 255, 255, 0.08); color: var(--text-muted); border: 1px solid var(--border-glass); }
+
+.hero-box {
+    padding: 2.5rem;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(255, 158, 0, 0.1));
+    border: 1px solid rgba(139, 92, 246, 0.25);
+    border-radius: 18px;
+    position: relative;
+    overflow: hidden;
+}
+.hero-box::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -30%;
+    width: 300px;
+    height: 300px;
+    background: radial-gradient(circle, rgba(139, 92, 246, 0.3) 0%, transparent 70%);
+    z-index: 0;
+    pointer-events: none;
+}
+.hero-box * {
+    position: relative;
+    z-index: 1;
+}
+@media (max-width: 576px) {
+    .custom-list-item {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 0.5rem !important;
+    }
+    .custom-list-item > div:last-child {
+        align-self: flex-end !important;
+    }
+    .hero-box {
+        padding: 1.5rem !important;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="home-hero-grid">
+    <!-- Welcome Card -->
+    <div class="hero-box animate-fade-in">
+        <h1 style="margin-bottom: 0.5rem;">FestAlchemy</h1>
+        <p style="color: var(--text-muted); font-size: 1.05rem; line-height: 1.5; margin-bottom: 1.5rem;">
+            Experience the magic of cultural celebration. Explore schedules, track live results, and view current rankings.
+        </p>
+        {% if not user.is_authenticated %}
+            <a href="{% url 'login' %}" class="btn" style="width: 100%; justify-content: center;">
+                <i class="bi bi-box-arrow-in-right"></i> Access Portal
+            </a>
+        {% else %}
+            <div style="padding: 0.8rem 1.2rem; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-glass); border-radius: 10px; text-align: center;">
+                <span style="font-size: 0.9rem; color: var(--text-muted)">Welcome back,</span>
+                <div style="font-weight: 700; font-size: 1.1rem; margin-top: 0.2rem;">{{ user.username }}</div>
+            </div>
+        {% endif %}
+    </div>
+    
+    <!-- Published Results -->
+    <div class="glass-panel animate-fade-in" style="margin-bottom: 0; padding: 2rem;">
+        <h2 style="font-size: 1.4rem; display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1.2rem;">
+            <i class="bi bi-patch-check" style="color: var(--success);"></i> Live Results
+        </h2>
+        {% if programs_with_results %}
+            <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 50%;">Program</th>
+                        <th>Category</th>
+                        <th style="text-align: right;">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for program in programs_with_results %}
+                    <tr>
+                        <td>
+                            <strong style="font-size: 1.05rem;">{{ program.name }}</strong>
+                        </td>
+                        <td>
+                            <span class="badge badge-primary">{{ program.category.name }}</span>
+                        </td>
+                        <td style="text-align: right;">
+                            <a href="{% url 'program_results' program.id %}" class="btn btn-secondary" style="padding: 0.45rem 1rem; font-size: 0.85rem;">
+                                <i class="bi bi-eye"></i> View Results
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            </div>
+        {% else %}
+            <div class="text-center" style="padding: 2rem 0;">
+                <p class="text-muted" style="font-size: 1rem; margin-bottom: 0;"><i class="bi bi-info-circle"></i> No results published yet. Stay tuned!</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Upcoming Programs -->
+<div class="glass-panel animate-fade-in" style="animation-delay: 0.15s; padding: 1.25rem 1.5rem; margin-bottom: 1.5rem;">
+    <h2 style="font-size: 1.2rem; display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
+        <i class="bi bi-calendar3" style="color: var(--primary);"></i> Upcoming Programs
+    </h2>
+    {% if programs %}
+        <div class="custom-list" style="max-height: 200px; overflow-y: auto; padding-right: 0.3rem;">
+        {% for program in programs %}
+            <div class="custom-list-item" style="padding: 0.5rem 0.75rem;">
+                <div>
+                    <strong style="font-size: 0.95rem;">{{ program.name }}</strong>
+                    <span class="badge badge-primary" style="margin-left: 0.5rem; font-size: 0.75rem;">{{ program.category.name }}</span>
+                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem;">
+                        <i class="bi bi-geo-alt"></i> Venue: {{ program.venue|default:"TBD" }}
+                    </div>
+                </div>
+                <div>
+                    <span class="badge badge-warning" style="font-size: 0.75rem; padding: 0.35rem 0.7rem;">
+                        <i class="bi bi-clock"></i> {{ program.schedule|date:"M d, H:i"|default:"TBD" }}
+                    </span>
+                </div>
+            </div>
+        {% endfor %}
+        </div>
+    {% else %}
+        <p class="text-muted" style="text-align: center; padding: 1rem 0; margin-bottom: 0; font-size: 0.9rem;">No upcoming programs scheduled yet.</p>
+    {% endif %}
+</div>
+
+<!-- Points Leaderboards -->
+<div class="points-grid animate-fade-in" style="animation-delay: 0.25s;">
+    <!-- Team Points -->
+    <div class="glass-panel">
+        <h2 style="font-size: 1.4rem; display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1.2rem;">
+            <i class="bi bi-trophy" style="color: var(--secondary);"></i> Team Leaderboard
+        </h2>
+        {% if team_points %}
+        <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 20%;">Rank</th>
+                    <th>Team</th>
+                    <th style="text-align: right;">Points</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for tp in team_points %}
+            {% with forloop.counter as rank %}
+            <tr>
+                <td>
+                    <span class="rank-badge {% if rank == 1 %}rank-1{% elif rank == 2 %}rank-2{% elif rank == 3 %}rank-3{% else %}rank-other{% endif %}">{{ rank }}</span>
+                </td>
+                <td>
+                    <strong style="font-size: 1.05rem;">{{ tp.team.name }}</strong>
+                </td>
+                <td style="text-align: right;">
+                    <span style="font-weight: 800; color: var(--secondary); font-size: 1.2rem;">{{ tp.total_points }}</span>
+                </td>
+            </tr>
+            {% endwith %}
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        <p class="text-muted" style="text-align: center; padding: 2rem 0;">Standings will populate once results are published.</p>
+        {% endif %}
+    </div>
+
+    <!-- Individual Points -->
+    <div class="glass-panel">
+        <h2 style="font-size: 1.4rem; display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1.2rem;">
+            <i class="bi bi-star" style="color: var(--success);"></i> Individual Points
+        </h2>
+        {% if member_points %}
+        <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 20%;">Rank</th>
+                    <th>Participant</th>
+                    <th>Team</th>
+                    <th style="text-align: right;">Points</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for mp in member_points %}
+            {% with forloop.counter as rank %}
+            <tr>
+                <td>
+                    <span class="rank-badge {% if rank == 1 %}rank-1{% elif rank == 2 %}rank-2{% elif rank == 3 %}rank-3{% else %}rank-other{% endif %}">{{ rank }}</span>
+                </td>
+                <td>
+                    <strong>{{ mp.member__name }}</strong>
+                </td>
+                <td>
+                    <span class="badge badge-primary">{{ mp.member__team__name }}</span>
+                </td>
+                <td style="text-align: right;">
+                    <span style="font-weight: 800; color: var(--success); font-size: 1.2rem;">{{ mp.total|floatformat:1 }}</span>
+                </td>
+            </tr>
+            {% endwith %}
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        <p class="text-muted" style="text-align: center; padding: 2rem 0;">Top scores will populate once results are published.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

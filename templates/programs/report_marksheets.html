@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Marksheets Reports - FestAlchemy{% endblock %}
+{% block page_title %}Marksheets Reports{% endblock %}
+
+{% block content %}
+<div class="glass-panel">
+    <!-- Action buttons -->
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 2rem;">
+        <a href="{% url 'reports_dashboard' %}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Back to Dashboard
+        </a>
+    </div>
+
+    <!-- Category Filter -->
+    <form method="get" class="filter-panel" style="display: flex; gap: 1rem; align-items: flex-end; margin-bottom: 2.5rem; flex-wrap: wrap;">
+        <div style="flex: 1 1 250px;">
+            <label for="category-select" style="font-size: 0.85rem; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 0.5rem;">Filter by Category</label>
+            <select name="category" id="category-select" class="form-control" onchange="this.form.submit()">
+                <option value="">-- All Categories --</option>
+                {% for cat in categories %}
+                    <option value="{{ cat.id }}" {% if selected_category == cat.id|stringformat:"i" %}selected{% endif %}>{{ cat.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% if selected_category %}
+            <div>
+                <a href="{% url 'report_marksheets' %}" class="btn btn-secondary" style="height: calc(1.5em + 1.7rem); align-items: center;">Clear Filter</a>
+            </div>
+        {% endif %}
+    </form>
+
+    <h3 style="margin-bottom: 1.5rem; font-weight: 700; border-bottom: 1px solid var(--border-glass); padding-bottom: 0.5rem;">
+        Choose a Program to Audit Marksheets
+    </h3>
+
+    <!-- Programs Grid -->
+    {% if programs %}
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem;">
+            {% for p in programs %}
+                <div class="stat-card" style="flex-direction: column; align-items: flex-start; gap: 1rem; cursor: pointer; padding: 1.5rem;" onclick="location.href='{% url 'report_marksheets' %}?program={{ p.id }}'">
+                    <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
+                        <span class="badge badge-primary">{{ p.category.name }}</span>
+                        <span class="badge badge-secondary" style="text-transform: none;">{{ p.get_type_display }}</span>
+                    </div>
+                    <div>
+                        <h4 style="font-weight: 700; margin-bottom: 0.25rem; font-size: 1.1rem; color: var(--text-main);">{{ p.name }}</h4>
+                        <span style="font-size: 0.82rem; color: var(--text-muted);">Judges: 
+                            {% if p.judges.all %}
+                                {% for judge in p.judges.all %}{{ judge.username }}{% if not forloop.last %}, {% endif %}{% endfor %}
+                            {% else %}
+                                None
+                            {% endif %}
+                        </span>
+                    </div>
+                    <div style="width: 100%; border-top: 1px solid var(--border-glass); padding-top: 0.8rem; display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            {% if p.total_sheets == 0 %}
+                                <span class="badge badge-danger" style="font-size: 0.68rem; background: rgba(244,63,94,0.1); color: var(--danger); border: 1px solid rgba(244,63,94,0.2);"><i class="bi bi-x-circle-fill"></i> No Sheets</span>
+                            {% elif p.pending_sheets == 0 %}
+                                <span class="badge badge-success" style="font-size: 0.68rem;"><i class="bi bi-check-circle-fill"></i> All Evaluated ({{ p.submitted_sheets }}/{{ p.total_sheets }})</span>
+                            {% else %}
+                                <span class="badge badge-warning" style="font-size: 0.68rem;"><i class="bi bi-hourglass-split"></i> {{ p.pending_sheets }} Pending</span>
+                            {% endif %}
+                        </div>
+                        <span style="font-size: 0.85rem; color: var(--primary); font-weight: 600;">Audit Sheets <i class="bi bi-chevron-right"></i></span>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div style="text-align: center; padding: 3rem; color: var(--text-muted);">
+            <i class="bi bi-journal-x" style="font-size: 3rem; display: block; margin-bottom: 1rem;"></i>
+            No programs found.
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

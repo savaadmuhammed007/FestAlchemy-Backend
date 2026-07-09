@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Categories - FestAlchemy{% endblock %}
+
+{% block page_title %}<i class="bi bi-tags"></i> Categories{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; flex-wrap:wrap; gap:1rem;">
+    <a href="{% url 'category_add' %}" class="btn">
+        <i class="bi bi-plus-circle"></i> Add Category
+    </a>
+</div>
+
+<div class="glass-panel">
+    {% if categories %}
+    <div class="table-responsive">
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Chest Prefix</th>
+                <th style="text-align: right;">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in categories %}
+            <tr>
+                <td>
+                    <strong style="font-size: 1.05rem;">{{ c.name }}</strong>
+                </td>
+                <td>
+                    <span class="badge badge-warning" style="font-size: 0.9rem;">
+                        {{ c.chest_prefix }}
+                    </span>
+                </td>
+                <td style="text-align: right;">
+                    <div style="display:inline-flex; gap:.4rem; justify-content: flex-end;">
+                        <a href="{% url 'category_edit' c.pk %}" class="btn btn-secondary" style="padding:.45rem .7rem; font-size:.85rem;" title="Edit">
+                            <i class="bi bi-pencil"></i>
+                        </a>
+                        <a href="{% url 'category_delete' c.pk %}" class="btn btn-danger" style="padding:.45rem .7rem; font-size:.85rem;" title="Delete" onclick="return confirm('Delete this category?');">
+                            <i class="bi bi-trash"></i>
+                        </a>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="text-muted" style="text-align: center; padding: 2rem 0;">No categories yet. <a href="{% url 'category_add' %}">Add one →</a></p>
+    {% endif %}
+</div>
+{% endblock %}

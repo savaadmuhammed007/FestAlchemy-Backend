@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}Marksheets - {{ program.name }} - FestAlchemy{% endblock %}
+
+{% block page_title %}<i class="bi bi-journal-check"></i> Marksheets: {{ program.name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+@media print {
+  .no-print { display: none !important; }
+  body { background: #fff !important; color: #111 !important; }
+  .glass-panel { border: 1px solid #ccc !important; background: #fff !important; box-shadow: none !important; }
+  table th, table td { color: #111 !important; border-bottom: 1px solid #ddd !important; }
+  .print-header { display: block !important; }
+}
+.print-header { display: none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row no-print" style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+    <div>
+        <p class="text-muted" style="margin: 0;"><i class="bi bi-tags"></i> Category: {{ program.category.name }}</p>
+    </div>
+    <div style="display:flex; gap:.7rem;">
+        <button onclick="window.print()" class="btn btn-secondary">
+            <i class="bi bi-printer"></i> Print Detailed List
+        </button>
+        <a href="{% url 'marksheet_list' %}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Back to List
+        </a>
+    </div>
+</div>
+
+<div class="print-header" style="margin-bottom:1.5rem;">
+    <h2 style="margin:0;">{{ program.name }} — Marksheets Overview</h2>
+    <p style="color:#555; margin:.3rem 0 0;">Official valuation records for each participant.</p>
+    <hr style="margin:.8rem 0; border-color:#ddd;">
+</div>
+
+<div class="glass-panel">
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 15%;">Code</th>
+                    <th style="width: 15%;">Chest No</th>
+                    <th>Participant</th>
+                    <th>Judge</th>
+                    <th>Status</th>
+                    <th style="text-align: right;">Marks JSON</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in sheets %}
+                <tr>
+                    <td>
+                        <strong style="color: var(--secondary); font-size: 1.15rem;">{{ s.judge_code }}</strong>
+                    </td>
+                    <td>
+                        <strong style="color: var(--text-muted);">{{ s.member.chest_no }}</strong>
+                    </td>
+                    <td><strong>{{ s.member.name }}</strong></td>
+                    <td>
+                        <span style="color: var(--text-muted);">
+                            <i class="bi bi-person-badge"></i> {{ s.judge.get_full_name|default:s.judge.username }}
+                        </span>
+                    </td>
+                    <td>
+                        {% if s.submitted %}
+                            <span class="badge badge-success"><i class="bi bi-check-circle"></i> Submitted</span>
+                        {% else %}
+                            <span class="badge badge-warning"><i class="bi bi-clock"></i> Pending</span>
+                        {% endif %}
+                    </td>
+                    <td style="text-align: right; font-family: monospace; font-size: 0.85rem; color: var(--text-muted);">
+                        {{ s.marks|safe }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

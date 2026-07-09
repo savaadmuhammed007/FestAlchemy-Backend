@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block title %}Reports Center - FestAlchemy{% endblock %}
+{% block page_title %}Reports Center{% endblock %}
+
+{% block content %}
+<div class="glass-panel">
+    <h2 style="margin-bottom: 0.5rem; font-weight: 700; background: linear-gradient(45deg, var(--primary), var(--secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; display: inline-block;">
+        <i class="bi bi-file-earmark-bar-graph"></i> Summary Reports
+    </h2>
+    <p style="color: var(--text-muted); margin-bottom: 2rem;">
+        Select a summary card below to filter, view details, and export print-optimized PDF reports.
+    </p>
+
+    <!-- Cards Grid -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem;">
+        
+        <!-- 1. Results Card -->
+        <div class="stat-card" style="flex-direction: column; align-items: flex-start; gap: 1rem; cursor: pointer; position: relative; overflow: hidden; padding: 2rem;" onclick="location.href='{% url 'report_results' %}'">
+            <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
+                <div class="stat-icon" style="background: rgba(139, 92, 246, 0.15); color: var(--primary);">
+                    <i class="bi bi-trophy-fill"></i>
+                </div>
+                <span class="badge badge-success">{{ results_count }} Records</span>
+            </div>
+            <div>
+                <h3 style="margin-bottom: 0.5rem; font-weight: 600;">Results Report</h3>
+                <p style="color: var(--text-muted); font-size: 0.88rem; line-height: 1.4;">
+                    View final rankings, points, and grades for individual events and single/group categories.
+                </p>
+            </div>
+            <a href="{% url 'report_results' %}" class="btn" style="width: 100%; justify-content: center; margin-top: 0.5rem;">
+                <i class="bi bi-eye"></i> View & Print Results
+            </a>
+        </div>
+
+        <!-- 2. Members Card -->
+        <div class="stat-card secondary" style="flex-direction: column; align-items: flex-start; gap: 1rem; cursor: pointer; position: relative; overflow: hidden; padding: 2rem;" onclick="location.href='{% url 'report_members' %}'">
+            <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
+                <div class="stat-icon" style="background: rgba(255, 158, 0, 0.15); color: var(--secondary);">
+                    <i class="bi bi-people-fill"></i>
+                </div>
+                <span class="badge badge-primary">{{ members_count }} Members</span>
+            </div>
+            <div>
+                <h3 style="margin-bottom: 0.5rem; font-weight: 600;">Members Report</h3>
+                <p style="color: var(--text-muted); font-size: 0.88rem; line-height: 1.4;">
+                    Export lists of participants grouped by team or categories. Track chest numbers.
+                </p>
+            </div>
+            <a href="{% url 'report_members' %}" class="btn btn-secondary" style="width: 100%; justify-content: center; margin-top: 0.5rem; border-color: var(--secondary);">
+                <i class="bi bi-eye"></i> View & Print Members
+            </a>
+        </div>
+
+        <!-- 3. Marksheets Card -->
+        <div class="stat-card" style="flex-direction: column; align-items: flex-start; gap: 1rem; cursor: pointer; position: relative; overflow: hidden; padding: 2rem;" onclick="location.href='{% url 'report_marksheets' %}'">
+            <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
+                <div class="stat-icon" style="background: rgba(14, 165, 233, 0.15); color: var(--info);">
+                    <i class="bi bi-journal-check"></i>
+                </div>
+                <span class="badge badge-warning">{{ marksheets_count }} Marksheets</span>
+            </div>
+            <div>
+                <h3 style="margin-bottom: 0.5rem; font-weight: 600;">Marksheets Status</h3>
+                <p style="color: var(--text-muted); font-size: 0.88rem; line-height: 1.4;">
+                    Check judges' grading logs. Audit drafts and submitted marksheets across all events.
+                </p>
+            </div>
+            <a href="{% url 'report_marksheets' %}" class="btn" style="width: 100%; justify-content: center; margin-top: 0.5rem; background: linear-gradient(135deg, var(--info), rgba(14, 165, 233, 0.8)); box-shadow: 0 4px 15px rgba(14, 165, 233, 0.3);">
+                <i class="bi bi-eye"></i> View & Print Marksheets
+            </a>
+        </div>
+
+        <!-- 4. Schedule Card -->
+        <div class="stat-card success" style="flex-direction: column; align-items: flex-start; gap: 1rem; cursor: pointer; position: relative; overflow: hidden; padding: 2rem;" onclick="location.href='{% url 'report_schedule' %}'">
+            <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
+                <div class="stat-icon" style="background: rgba(16, 185, 129, 0.15); color: var(--success);">
+                    <i class="bi bi-clock-history"></i>
+                </div>
+                <span class="badge badge-success">{{ programs_count }} Programs</span>
+            </div>
+            <div>
+                <h3 style="margin-bottom: 0.5rem; font-weight: 600;">Schedule Timeline</h3>
+                <p style="color: var(--text-muted); font-size: 0.88rem; line-height: 1.4;">
+                    Export the complete schedule, category limits, venue distributions, and program durations.
+                </p>
+            </div>
+            <a href="{% url 'report_schedule' %}" class="btn btn-success" style="width: 100%; justify-content: center; margin-top: 0.5rem;">
+                <i class="bi bi-eye"></i> View & Print Schedule
+            </a>
+        </div>
+
+        <!-- 5. Team Points Card -->
+        <div class="stat-card" style="flex-direction: column; align-items: flex-start; gap: 1rem; cursor: pointer; position: relative; overflow: hidden; padding: 2rem;" onclick="location.href='{% url 'report_teampoints' %}'">
+            <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
+                <div class="stat-icon" style="background: rgba(244, 63, 94, 0.15); color: var(--danger);">
+                    <i class="bi bi-stars"></i>
+                </div>
+                <span class="badge badge-danger">{{ teams_count }} Teams</span>
+            </div>
+            <div>
+                <h3 style="margin-bottom: 0.5rem; font-weight: 600;">Team Points Standings</h3>
+                <p style="color: var(--text-muted); font-size: 0.88rem; line-height: 1.4;">
+                    View team rankings breakdown by program. Audit scoring distributions per team.
+                </p>
+            </div>
+            <a href="{% url 'report_teampoints' %}" class="btn" style="width: 100%; justify-content: center; margin-top: 0.5rem; background: linear-gradient(135deg, var(--danger), rgba(244, 63, 94, 0.8)); box-shadow: 0 4px 15px rgba(244, 63, 94, 0.3);">
+                <i class="bi bi-eye"></i> View Standings
+            </a>
+        </div>
+
+    </div>
+</div>
+{% endblock %}

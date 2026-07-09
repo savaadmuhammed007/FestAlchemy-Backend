@@ -1,0 +1,178 @@
+{% extends "base.html" %}{% block title %}Poster Settings - {{ program.name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .poster-container {
+        position: relative;
+        display: inline-block;
+        max-width: 100%;
+        border: 2px solid var(--glass-border);
+        background: #000;
+        user-select: none;
+    }
+    .poster-img {
+        display: block;
+        max-width: 100%;
+        height: auto;
+    }
+    .draggable-label {
+        position: absolute;
+        cursor: move;
+        padding: 5px 10px;
+        background: rgba(123, 44, 191, 0.8);
+        color: #fff;
+        border-radius: 4px;
+        white-space: nowrap;
+        font-weight: bold;
+        transform: translate(-50%, -50%); /* Center on coordinate */
+    }
+    .draggable-label:hover {
+        background: var(--primary-color);
+        z-index: 10;
+    }
+    .config-panel {
+        background: var(--bg-panel);
+        border: 1px solid var(--glass-border);
+        padding: 1rem;
+        border-radius: 12px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+    {% if is_global %}
+        <h1>Global Poster Designer</h1>
+        <a href="{% url 'result_list' %}" class="btn btn-secondary">Back to Results</a>
+    {% else %}
+        <h1>Poster Designer: {{ program.name }}</h1>
+        <a href="{% url 'result_program_detail' program.id %}" class="btn btn-secondary">Back to Results</a>
+    {% endif %}
+</div>
+
+<div class="row" style="display:grid; grid-template-columns: 2fr 1fr; gap: 2rem;">
+    <!-- Visual Editor -->
+    <div>
+        <div class="glass-panel">
+            <p class="text-muted mb-4">Drag the labels to position them on the poster. Positions are saved as percentages.</p>
+            
+            <div class="poster-container" id="poster-editor">
+                {% if template and template.image_file %}
+                    <img src="{{ template.image_file.url }}" class="poster-img" id="base-img">
+                {% else %}
+                    <div style="width:600px; height:800px; background:#1a1a2e; display:flex; align-items:center; justify-content:center; color:#555;">
+                        Upload a background to start designing
+                    </div>
+                {% endif %}
+                
+                <div class="draggable-label" id="label-program" data-key="program">Program Name</div>
+                <div class="draggable-label" id="label-rank1" data-key="rank1">🥇 Winner 1</div>
+                <div class="draggable-label" id="label-rank2" data-key="rank2">🥈 Winner 2</div>
+                <div class="draggable-label" id="label-rank3" data-key="rank3">🥉 Winner 3</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Controls -->
+    <div>
+        <div class="config-panel">
+            <h3 style="margin-top:0;">Settings</h3>
+            <form method="POST" enctype="multipart/form-data" id="settings-form">
+                {% csrf_token %}
+                <div class="form-group">
+                    <label>Background Template</label>
+                    {{ form.image_file }}
+                </div>
+                {{ form.config }}
+                
+                <p style="font-size:.85rem; color:var(--text-muted); margin: 1rem 0;">
+                    Tip: Use high-resolution images (e.g. 1200x1600).
+                </p>
+                
+                <button type="submit" class="btn" style="width:100%;">Save Design</button>
+            </form>
+            
+            {% if not is_global %}
+            <div style="margin-top:2rem;">
+                <a href="{% url 'generate_poster' program.id %}" target="_blank" class="btn btn-secondary" style="width:100%;">Preview Poster</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const configInput = document.getElementById('id_config');
+    const container = document.getElementById('poster-editor');
+    const labels = document.querySelectorAll('.draggable-label');
+    
+    let config = JSON.parse(configInput.value || '{}');
+
+    // Initialize positions
+    function initPositions() {
+        labels.forEach(label => {
+            const key = label.dataset.key;
+            if (config[key]) {
+                label.style.left = config[key].x + '%';
+                label.style.top = config[key].y + '%';
+            } else {
+                // Set defaults if empty
+                const defaults = {
+                    program: {x: 50, y: 20},
+                    rank1: {x: 50, y: 40},
+                    rank2: {x: 50, y: 55},
+                    rank3: {x: 50, y: 70}
+                };
+                if (defaults[key]) {
+                    label.style.left = defaults[key].x + '%';
+                    label.style.top = defaults[key].y + '%';
+                    config[key] = {...defaults[key], size: 40, color: "#ffffff"};
+                }
+            }
+        });
+        updateInput();
+    }
+
+    function updateInput() {
+        configInput.value = JSON.stringify(config);
+    }
+
+    // Dragging Logic
+    labels.forEach(label => {
+        label.onmousedown = function(event) {
+            event.preventDefault();
+            
+            const rect = container.getBoundingClientRect();
+            
+            function onMouseMove(e) {
+                let x = ((e.clientX - rect.left) / rect.width) * 100;
+                let y = ((e.clientY - rect.top) / rect.height) * 100;
+                
+                // Bounds
+                x = Math.max(0, Math.min(100, x));
+                y = Math.max(0, Math.min(100, y));
+                
+                label.style.left = x + '%';
+                label.style.top = y + '%';
+                
+                const key = label.dataset.key;
+                if (!config[key]) config[key] = {size: 30, color: "#ffffff"};
+                config[key].x = parseFloat(x.toFixed(2));
+                config[key].y = parseFloat(y.toFixed(2));
+                updateInput();
+            }
+
+            document.addEventListener('mousemove', onMouseMove);
+            document.onmouseup = function() {
+                document.removeEventListener('mousemove', onMouseMove);
+                document.onmouseup = null;
+            };
+        };
+    });
+
+    initPositions();
+</script>
+{% endblock %}

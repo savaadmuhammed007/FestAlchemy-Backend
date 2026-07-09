@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}Evaluate - {{ program.name }}{% endblock %}
+
+{% block content %}
+<div class="row" style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 2rem;">
+    <div>
+        <h1>Mark Participants</h1>
+        <p class="text-muted">Program: <strong>{{ program.name }}</strong> ({{ program.category.name }})</p>
+    </div>
+    <a href="{% url 'judge_dashboard' %}" class="btn btn-secondary">← Back to Dashboard</a>
+</div>
+
+<div class="glass-panel animate-fade-in" style="margin-bottom: 2rem;">
+    <h2 style="font-size: 1.4rem; display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1.2rem;">
+        <i class="bi bi-clock-history" style="color: var(--secondary);"></i> Pending Participant Marks
+    </h2>
+    <p class="text-muted">Select a participant code to enter marks and save/submit.</p>
+    
+    {% if pending_marksheets %}
+    <div class="table-responsive">
+    <table style="width: 100%; border-collapse: collapse; margin-top: 1.5rem;">
+        <thead>
+            <tr style="border-bottom: 2px solid var(--border-glass); text-align: left;">
+                <th style="padding: 1rem;">Judge Code</th>
+                <th style="padding: 1rem;">Status</th>
+                <th style="padding: 1rem; text-align: right;">Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for sheet in pending_marksheets %}
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                <td style="padding: 1rem; font-weight: 800; font-size: 1.5rem; color: var(--secondary);">
+                    {{ sheet.judge_code }}
+                </td>
+                <td style="padding: 1rem;">
+                    <span class="badge badge-warning" style="font-size: 0.8rem; padding: 0.35rem 0.75rem;">⏳ Pending</span>
+                </td>
+                <td style="padding: 1rem; text-align: right;">
+                    <a href="{% url 'evaluate' sheet.id %}" class="btn" style="padding: 0.5rem 1.5rem; font-size: 0.9rem;">Enter Marks</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="text-muted" style="text-align: center; padding: 2rem 0; margin-bottom: 0;">All participants have been marked for this program!</p>
+    {% endif %}
+</div>
+
+<div class="glass-panel animate-fade-in" style="animation-delay: 0.1s;">
+    <h2 style="font-size: 1.4rem; display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1.2rem;">
+        <i class="bi bi-check-circle" style="color: var(--success);"></i> Submitted Marks
+    </h2>
+    <p class="text-muted">Finalized evaluations. Marks are locked and stored.</p>
+    
+    {% if submitted_marksheets %}
+    <div class="table-responsive">
+    <table style="width: 100%; border-collapse: collapse; margin-top: 1.5rem;">
+        <thead>
+            <tr style="border-bottom: 2px solid var(--border-glass); text-align: left;">
+                <th style="padding: 1rem;">Judge Code</th>
+                <th style="padding: 1rem;">Status</th>
+                <th style="padding: 1rem; text-align: right;">Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for sheet in submitted_marksheets %}
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                <td style="padding: 1rem; font-weight: 800; font-size: 1.5rem; color: var(--text-muted);">
+                    {{ sheet.judge_code }}
+                </td>
+                <td style="padding: 1rem;">
+                    <span class="badge badge-success" style="font-size: 0.8rem; padding: 0.35rem 0.75rem;">✅ Submitted</span>
+                </td>
+                <td style="padding: 1rem; text-align: right;">
+                    <a href="{% url 'evaluate' sheet.id %}" class="btn btn-secondary" style="padding: 0.5rem 1.5rem; font-size: 0.9rem;">View Marks</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="text-muted" style="text-align: center; padding: 2rem 0; margin-bottom: 0;">No participant marks have been submitted yet.</p>
+    {% endif %}
+</div>
+{% endblock %}

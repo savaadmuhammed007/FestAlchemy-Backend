@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Login - FestAlchemy{% endblock %}
+
+{% block page_title %}<i class="bi bi-box-arrow-in-right"></i> Login{% endblock %}
+
+{% block content %}
+<div class="auth-wrapper">
+    <div class="glass-panel auth-card text-center">
+        <h2 style="font-size: 1.8rem; margin-bottom: 0.5rem; background: linear-gradient(45deg, var(--primary), var(--secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Welcome Back</h2>
+        <p class="text-muted mb-4">Login to access your dashboard</p>
+        
+        <form method="post">
+            {% csrf_token %}
+            {% if form.non_field_errors %}
+                <div style="color: var(--danger); margin-bottom: 1.2rem; font-size: 0.9rem; text-align: left; background: rgba(244, 63, 94, 0.1); padding: 0.75rem 1rem; border-radius: 8px; border: 1px solid rgba(244, 63, 94, 0.2);">
+                    <i class="bi bi-exclamation-circle"></i> {{ form.non_field_errors.0 }}
+                </div>
+            {% endif %}
+            
+            <div class="form-group" style="text-align: left;">
+                <label for="id_username"><i class="bi bi-person"></i> Username</label>
+                <input type="text" name="username" autofocus required id="id_username" placeholder="Enter username">
+            </div>
+            
+            <div class="form-group" style="text-align: left;">
+                <label for="id_password"><i class="bi bi-lock"></i> Password</label>
+                <input type="password" name="password" required id="id_password" placeholder="Enter password">
+            </div>
+            
+            <button type="submit" class="btn" style="width: 100%; margin-top: 1rem; justify-content: center;">
+                <i class="bi bi-box-arrow-in-right"></i> Sign In
+            </button>
+        </form>
+        
+        <div style="margin-top: 1.8rem; font-size: 0.95rem;">
+            <span class="text-muted">Don't have an account?</span> 
+            <a href="{% url 'signup' %}" style="color: var(--secondary); font-weight: 600;">Sign up here</a>
+        </div>
+    </div>
+</div>
+{% endblock content %}

@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+
+{% block title %}Marksheets Audit: {{ program.name }} - FestAlchemy{% endblock %}
+{% block page_title %}Marksheets Audit{% endblock %}
+
+{% block extra_css %}
+<style>
+    .filter-panel {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        margin-bottom: 2rem;
+        align-items: flex-end;
+    }
+    .filter-item {
+        flex: 1 1 200px;
+    }
+    
+    @media print {
+        body {
+            background: #ffffff !important;
+            color: #000000 !important;
+            font-size: 11pt !important;
+        }
+        .sidebar, .main-header, .mobile-header, .no-print, .btn, .filter-panel {
+            display: none !important;
+        }
+        .main-panel {
+            margin-left: 0 !important;
+        }
+        .main-content {
+            padding: 0 !important;
+            max-width: 100% !important;
+        }
+        .glass-panel {
+            background: none !important;
+            border: none !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+        }
+        .print-header {
+            display: block !important;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+        .print-header h1 {
+            font-size: 24pt;
+            font-weight: bold;
+            margin-bottom: 0.25rem;
+            color: #000000 !important;
+        }
+        .print-header p {
+            color: #555555 !important;
+            font-size: 11pt;
+        }
+        table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+        }
+        th, td {
+            padding: 8px 10px !important;
+            border-bottom: 1px solid #000000 !important;
+            color: #000000 !important;
+            background: none !important;
+        }
+        th {
+            border-bottom: 2px solid #000000 !important;
+        }
+        tr td:first-child, tr td:last-child {
+            border-radius: 0 !important;
+            border-left: none !important;
+            border-right: none !important;
+        }
+    }
+    .print-header {
+        display: none;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Print Header (Hidden on screen) -->
+<div class="print-header">
+    <h1>FestAlchemy Marksheets Audit Details Report</h1>
+    <p>Program: <strong>{{ program.name }} ({{ program.category.name }})</strong></p>
+    <p>Generated on: <span id="print-date"></span></p>
+</div>
+
+<div class="glass-panel">
+    <!-- Back and Print Actions -->
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 2rem;" class="no-print">
+        <a href="{% url 'report_marksheets' %}{% if selected_category %}?category={{ selected_category }}{% endif %}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Back to Programs
+        </a>
+        <button onclick="window.print()" class="btn btn-success">
+            <i class="bi bi-printer"></i> Print Audit
+        </button>
+    </div>
+
+    <!-- Filters Panel -->
+    <form method="get" class="filter-panel no-print">
+        <input type="hidden" name="program" value="{{ program.id }}">
+        {% if selected_category %}
+            <input type="hidden" name="category" value="{{ selected_category }}">
+        {% endif %}
+        <div class="filter-item">
+            <label for="judge-select" style="font-size: 0.85rem; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 0.5rem;">Filter by Judge</label>
+            <select name="judge" id="judge-select" class="form-control" onchange="this.form.submit()">
+                <option value="">-- All Judges --</option>
+                {% for j in judges %}
+                    <option value="{{ j.id }}" {% if selected_judge == j.id|stringformat:"i" %}selected{% endif %}>{{ j.username }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="filter-item">
+            <label for="status-select" style="font-size: 0.85rem; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 0.5rem;">Filter by Status</label>
+            <select name="status" id="status-select" class="form-control" onchange="this.form.submit()">
+                <option value="">-- All Statuses --</option>
+                <option value="submitted" {% if selected_status == 'submitted' %}selected{% endif %}>Submitted Only</option>
+                <option value="draft" {% if selected_status == 'draft' %}selected{% endif %}>Drafts Only</option>
+            </select>
+        </div>
+        {% if selected_judge or selected_status %}
+            <div style="flex: 0 0 auto;">
+                <a href="{% url 'report_marksheets' %}?program={{ program.id }}{% if selected_category %}&category={{ selected_category }}{% endif %}" class="btn btn-secondary" style="height: calc(1.5em + 1.7rem); align-items: center;">Clear Filters</a>
+            </div>
+        {% endif %}
+    </form>
+
+    <h3 style="margin-bottom: 0.5rem; font-weight: 700; border-bottom: 1px solid var(--border-glass); padding-bottom: 0.5rem;">
+        {{ program.name }} Judge Score Sheets
+    </h3>
+    <div style="margin-bottom: 1.5rem;" class="no-print">
+        <span class="badge badge-primary">{{ program.category.name }}</span>
+        <span class="badge badge-success">{{ program.get_type_display }}</span>
+        <span class="badge badge-warning" style="text-transform: none;">{{ program.get_stage_type_display }}</span>
+    </div>
+
+    {% if sheets %}
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Judge Name</th>
+                        <th>Participant</th>
+                        <th>Team</th>
+                        <th>Assigned Marks</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for sheet in sheets %}
+                        <tr>
+                            <td><strong style="color: var(--primary);">{{ sheet.judge.username }}</strong></td>
+                            <td><strong>{{ sheet.member.name }}</strong> ({{ sheet.member.chest_no }})</td>
+                            <td>{{ sheet.member.team.name }}</td>
+                            <td>
+                                {% if sheet.submitted %}
+                                    <strong style="font-size: 1.05rem;">{{ sheet.total_score }}</strong> / {{ program.max_marks }}
+                                {% else %}
+                                    <span style="color: var(--text-muted); font-style: italic;">
+                                        {% if sheet.total_score > 0 %}{{ sheet.total_score }} (Draft){% else %}Pending{% endif %}
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if sheet.submitted %}
+                                    <span class="badge badge-success">Submitted</span>
+                                {% else %}
+                                    <span class="badge badge-warning">Draft</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div style="text-align: center; padding: 3rem; color: var(--text-muted);">
+            <i class="bi bi-journal-x" style="font-size: 3rem; display: block; margin-bottom: 1rem;"></i>
+            No judging marksheets match the selected filters.
+        </div>
+    {% endif %}
+</div>
+
+<script>
+    document.getElementById('print-date').innerText = new Date().toLocaleString();
+</script>
+{% endblock %}

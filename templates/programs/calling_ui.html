@@ -1,0 +1,280 @@
+{% extends "base.html" %}
+
+{% block title %}Calling List - {{ program.name }} - FestAlchemy{% endblock %}
+
+{% block page_title %}<i class="bi bi-megaphone"></i> Calling List: {{ program.name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+.scratch-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+}
+
+.scratch-card-container {
+    position: relative;
+    height: 160px;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);
+    background: var(--bg-panel);
+    border: 1px solid var(--border-glass);
+    transition: var(--transition);
+}
+.scratch-card-container:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 40px 0 rgba(139, 92, 246, 0.2);
+    border-color: rgba(139, 92, 246, 0.4);
+}
+
+.scratch-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 2;
+    cursor: crosshair;
+    border-radius: 16px;
+}
+
+@media print {
+  .no-print { display: none !important; }
+  .scratch-grid { display: none !important; }
+  body { background: #fff !important; color: #111 !important; }
+  .glass-panel { border: 1px solid #ccc !important; background: #fff !important; box-shadow: none !important; }
+  table th, table td { color: #111 !important; border-bottom: 1px solid #ddd !important; }
+  .print-only { display: block !important; }
+}
+.print-only { display: none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; flex-wrap:wrap; gap:1rem;" class="no-print">
+    <div>
+        <p class="text-muted" style="margin: 0;"><i class="bi bi-tags"></i> Category: {{ program.category.name }}</p>
+    </div>
+    <div style="display:flex; gap:.7rem;">
+        <button onclick="window.print()" class="btn btn-secondary">
+            <i class="bi bi-printer"></i> Print Called List
+        </button>
+        <a href="{% url 'admin_dashboard' %}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Back to Dashboard
+        </a>
+    </div>
+</div>
+
+<!-- Print-only table of called participants -->
+<div class="glass-panel print-only" style="margin-bottom:1.5rem;">
+    <h2>Called Participants — {{ program.name }}</h2>
+    <table style="width:100%; border-collapse:collapse;">
+        <thead>
+            <tr style="border-bottom:2px solid #ccc; text-align:left;">
+                <th style="padding:.7rem;">Judge Code</th>
+                <th style="padding:.7rem;">Chest No</th>
+                <th style="padding:.7rem;">Name</th>
+                <th style="padding:.7rem;">Team</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for member in members %}{% if member.called %}
+            <tr style="border-bottom:1px solid #ddd;">
+                <td style="padding:.7rem; font-weight:800; font-size:1.2rem;">{{ member.judge_code }}</td>
+                <td style="padding:.7rem;">{{ member.chest_no }}</td>
+                <td style="padding:.7rem;">{{ member.name }}</td>
+                <td style="padding:.7rem;">{{ member.team.name }}</td>
+            </tr>
+            {% endif %}{% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="scratch-grid no-print">
+    {% if members %}
+        {% for member in members %}
+            {% if member.called %}
+                <div class="scratch-card-container permanently-called" style="border-color: var(--success); background: rgba(16, 185, 129, 0.08); display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;">
+                    <span style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em; margin-bottom: 5px;">Judge Code</span>
+                    <h2 style="color: var(--success); margin: 0; font-size: 2.2rem; font-weight: 800;">{{ member.judge_code }}</h2>
+                    <span style="font-size: 0.85rem; margin-top: 6px; color: var(--text-main); font-weight: 600;">{{ member.name }}</span>
+                    <span style="font-size: 0.75rem; color: var(--text-muted);">Chest No: {{ member.chest_no }}</span>
+                </div>
+            {% else %}
+                <div class="scratch-card-container" id="container-{{ member.id }}">
+                    <!-- Revealed Code Underneath -->
+                    <div style="position: absolute; top:0; left:0; width:100%; height:100%; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 1; text-align: center;">
+                        <span style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em; margin-bottom: 5px;">Judge Code</span>
+                        <h2 id="judge-code-{{ member.id }}" style="color: var(--success); margin: 0; font-size: 2.2rem; font-weight: 800;">{{ member.judge_code }}</h2>
+                        <span style="font-size: 0.85rem; margin-top: 6px; color: var(--text-main); font-weight: 600;">{{ member.name }}</span>
+                        <span style="font-size: 0.75rem; color: var(--text-muted);">Chest No: {{ member.chest_no }}</span>
+                    </div>
+
+                    <!-- Scratchable Canvas on top -->
+                    <canvas id="scratch-{{ member.id }}" width="300" height="160" class="scratch-canvas" data-member-id="{{ member.id }}"></canvas>
+                    
+                    <!-- Overlay label, ignores pointer events -->
+                    <div style="position: absolute; top:0; left:0; width:100%; height:100%; z-index: 3; pointer-events: none; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;" id="overlay-{{ member.id }}">
+                        <span style="font-weight:700; font-size:1rem; background: rgba(17, 24, 39, 0.75); backdrop-filter: blur(4px); border: 1px solid rgba(255,255,255,0.1); padding: 8px 16px; border-radius: 12px; color: #fff; line-height: 1.4;">
+                            Scratch to Call<br>
+                            <span style="font-size:1.1rem; color: var(--secondary); font-weight: 800;">Chest: {{ member.chest_no }}</span>
+                        </span>
+                    </div>
+                </div>
+            {% endif %}
+        {% endfor %}
+    {% else %}
+        <p class="text-muted" style="grid-column: 1 / -1; text-align: center; padding: 2rem 0;">No members have registered for this program yet.</p>
+    {% endif %}
+</div>
+
+<div class="glass-panel no-print" style="margin-top: 2.5rem;">
+    <h2 style="font-size: 1.4rem; display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1.2rem;">
+        <i class="bi bi-list-check" style="color: var(--secondary);"></i> Called Summary
+    </h2>
+    <div class="table-responsive">
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 20%;">Code</th>
+                <th>Chest No</th>
+                <th>Member Name</th>
+                <th>Team</th>
+            </tr>
+        </thead>
+        <tbody id="summary-body">
+            {% for member in members %}
+            {% if member.called %}
+            <tr>
+                <td>
+                    <strong style="color: var(--success); font-size: 1.1rem;">{{ member.judge_code }}</strong>
+                </td>
+                <td>
+                    <strong style="color: var(--text-muted);">{{ member.chest_no }}</strong>
+                </td>
+                <td><strong>{{ member.name }}</strong></td>
+                <td>
+                    <span class="badge badge-primary">{{ member.team.name }}</span>
+                </td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const canvases = document.querySelectorAll('.scratch-canvas');
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]') ? document.querySelector('[name=csrfmiddlewaretoken]').value : '{{ csrf_token }}';
+
+    canvases.forEach(canvas => {
+        const ctx = canvas.getContext('2d');
+        const memberId = canvas.getAttribute('data-member-id');
+        let isDrawing = false;
+        let isRevealed = false;
+        let ajaxFired = false;
+        const codeElement = document.getElementById('judge-code-' + memberId);
+
+        // Fill canvas with cover gradient
+        let gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+        gradient.addColorStop(0, '#8b5cf6'); // var(--primary)
+        gradient.addColorStop(1, '#ec4899'); // var(--secondary)
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Add tech grid pattern 
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+        for(let i=0; i<120; i++) {
+            ctx.beginPath();
+            ctx.arc(Math.random()*canvas.width, Math.random()*canvas.height, Math.random()*2 + 1, 0, 2*Math.PI);
+            ctx.fill();
+        }
+
+        function getMousePos(evt) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            return {
+                x: ((evt.clientX || (evt.touches && evt.touches[0].clientX)) - rect.left) * scaleX,
+                y: ((evt.clientY || (evt.touches && evt.touches[0].clientY)) - rect.top) * scaleY
+            };
+        }
+
+        function fireAjax() {
+            if (ajaxFired) return;
+            ajaxFired = true;
+            fetch(window.location.href, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRFToken': csrfToken
+                },
+                body: `member_id=${memberId}`
+            }).then(r => r.json()).then(data => {
+                if (codeElement) codeElement.innerText = data.code;
+            });
+        }
+
+        function scratch(e) {
+            if (!isDrawing || isRevealed) return;
+            e.preventDefault();
+            fireAjax(); // fire on first movement
+            
+            const pos = getMousePos(e);
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.beginPath();
+            ctx.arc(pos.x, pos.y, 25, 0, 2 * Math.PI);
+            ctx.fill();
+
+            const overlay = document.getElementById('overlay-' + memberId);
+            if (overlay) overlay.style.display = 'none';
+
+            checkPercentage();
+        }
+
+        function checkPercentage() {
+            let count = 0;
+            const stride = 10;
+            const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+            for (let i = 0; i < pixels.length; i += 4 * stride) {
+                if (pixels[i+3] === 0) count++;
+            }
+            if (count > (canvas.width * canvas.height / stride) * 0.35) {
+                isRevealed = true;
+                canvas.style.transition = 'opacity 0.4s';
+                canvas.style.opacity = '0';
+                
+                setTimeout(() => {
+                    canvas.remove();
+                    const container = document.getElementById('container-' + memberId);
+                    container.style.borderColor = 'var(--success)';
+                    container.style.background = 'rgba(16, 185, 129, 0.08)';
+                    
+                    // Add row to summary table dynamically if not exists
+                    const summaryBody = document.getElementById('summary-body');
+                    const code = codeElement ? codeElement.innerText : '??';
+                    const chest = '{{ member.chest_no }}';
+                    const name = '{{ member.name }}';
+                    const team = '{{ member.team.name }}';
+                }, 400);
+            }
+        }
+
+        canvas.addEventListener('mousedown', (e) => { isDrawing = true; fireAjax(); scratch(e); });
+        canvas.addEventListener('mousemove', scratch);
+        window.addEventListener('mouseup', () => { isDrawing = false; });
+
+        canvas.addEventListener('touchstart', (e) => { isDrawing = true; fireAjax(); scratch(e); });
+        canvas.addEventListener('touchmove', scratch);
+        window.addEventListener('touchend', () => { isDrawing = false; });
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}Marksheets Overview - FestAlchemy{% endblock %}
+
+{% block page_title %}<i class="bi bi-journal-check"></i> Marksheets{% endblock %}
+
+{% block content %}
+<div class="glass-panel">
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 50%;">Program Name</th>
+                    <th>Category</th>
+                    <th style="text-align: right;">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in programs %}
+                <tr>
+                    <td>
+                        <strong style="font-size: 1.05rem;">{{ p.name }}</strong>
+                    </td>
+                    <td>
+                        <span class="badge badge-primary">{{ p.category.name }}</span>
+                    </td>
+                    <td style="text-align: right;">
+                        <a href="{% url 'marksheet_program_detail' p.id %}" class="btn" style="padding: 0.5rem 1rem; font-size: 0.9rem;">
+                            <i class="bi bi-file-earmark-spreadsheet"></i> View Sheets
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

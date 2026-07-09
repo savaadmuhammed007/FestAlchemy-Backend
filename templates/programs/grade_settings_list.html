@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Program Grade Settings - FestAlchemy{% endblock %}
+
+{% block page_title %}<i class="bi bi-patch-check"></i> Program Grade Settings{% endblock %}
+
+{% block content %}
+<div class="glass-panel">
+    <p style="color:var(--text-muted); font-size:.85rem; margin-bottom: 1.2rem;">Define grading rules for programs. If no rules are set, results compute points using the default rank points.</p>
+    {% if programs %}
+    <div class="table-responsive">
+    <table>
+        <thead>
+            <tr>
+                <th>Program Name</th>
+                <th>Category</th>
+                <th>Max Marks</th>
+                <th>Grading Rules</th>
+                <th style="text-align: right;">Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in programs %}
+            <tr>
+                <td>
+                    <strong style="font-size: 1.05rem;">{{ p.name }}</strong>
+                </td>
+                <td>
+                    <span class="badge badge-primary">{{ p.category.name }}</span>
+                </td>
+                <td>{{ p.max_marks }}</td>
+                <td>
+                    {% if p.grade_settings.all %}
+                        <div style="display: flex; flex-wrap: wrap; gap: 0.35rem;">
+                            {% for rule in p.grade_settings.all %}
+                                <span class="badge badge-secondary" style="font-size: 0.8rem; padding: 0.35rem 0.6rem;">
+                                    <strong>{{ rule.grade_name }}</strong> (&ge;{{ rule.min_marks }}) &rarr; <strong>{{ rule.points }}</strong> pts
+                                </span>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <span class="text-muted" style="font-size: 0.85rem;"><i class="bi bi-info-circle"></i> Using Rank Points System</span>
+                    {% endif %}
+                </td>
+                <td style="text-align: right;">
+                    <a href="{% url 'grade_setting_edit' p.pk %}" class="btn" style="padding:.45rem .8rem; font-size:.85rem;">
+                        <i class="bi bi-sliders"></i> Configure Rules
+                    </a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="text-muted" style="text-align: center; padding: 2rem 0;">No programs registered yet.</p>
+    {% endif %}
+</div>
+{% endblock %}

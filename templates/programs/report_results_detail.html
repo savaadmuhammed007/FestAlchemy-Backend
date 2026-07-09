@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+
+{% block title %}Results Details: {{ program.name }} - FestAlchemy{% endblock %}
+{% block page_title %}Results Details{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Print Styles */
+    @media print {
+        body {
+            background: #ffffff !important;
+            color: #000000 !important;
+            font-size: 11pt !important;
+        }
+        .sidebar, .main-header, .mobile-header, .no-print, .btn {
+            display: none !important;
+        }
+        .main-panel {
+            margin-left: 0 !important;
+        }
+        .main-content {
+            padding: 0 !important;
+            max-width: 100% !important;
+        }
+        .glass-panel {
+            background: none !important;
+            border: none !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+        }
+        .print-header {
+            display: block !important;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+        .print-header h1 {
+            font-size: 24pt;
+            font-weight: bold;
+            margin-bottom: 0.25rem;
+            color: #000000 !important;
+        }
+        .print-header p {
+            color: #555555 !important;
+            font-size: 11pt;
+        }
+        table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+        }
+        th, td {
+            padding: 8px 10px !important;
+            border-bottom: 1px solid #000000 !important;
+            color: #000000 !important;
+            background: none !important;
+        }
+        th {
+            border-bottom: 2px solid #000000 !important;
+        }
+        tr td:first-child, tr td:last-child {
+            border-radius: 0 !important;
+            border-left: none !important;
+            border-right: none !important;
+        }
+    }
+    .print-header {
+        display: none;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Print Header (Hidden on screen) -->
+<div class="print-header">
+    <h1>FestAlchemy Results Details Report</h1>
+    <p>Program: <strong>{{ program.name }} ({{ program.category.name }})</strong></p>
+    <p>Generated on: <span id="print-date"></span></p>
+</div>
+
+<div class="glass-panel">
+    <!-- Back and Print Actions -->
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 2rem;" class="no-print">
+        <a href="{% url 'report_results' %}{% if selected_category %}?category={{ selected_category }}{% endif %}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Back to Programs
+        </a>
+        <button onclick="window.print()" class="btn btn-success">
+            <i class="bi bi-printer"></i> Print Results
+        </button>
+    </div>
+
+    <h3 style="margin-bottom: 0.5rem; font-weight: 700; border-bottom: 1px solid var(--border-glass); padding-bottom: 0.5rem;">
+        {{ program.name }} Rank Results
+    </h3>
+    <div style="margin-bottom: 1.5rem;" class="no-print">
+        <span class="badge badge-primary">{{ program.category.name }}</span>
+        <span class="badge badge-success">{{ program.get_type_display }}</span>
+        <span class="badge badge-warning" style="text-transform: none;">{{ program.get_stage_type_display }}</span>
+        {% if program.venue %}
+            <span class="badge badge-secondary" style="background: rgba(255,255,255,0.05); color: var(--text-main); border: 1px solid var(--border-glass);">Venue: {{ program.venue }}</span>
+        {% endif %}
+    </div>
+
+    {% if results %}
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 80px;">Rank</th>
+                        <th>Participant</th>
+                        <th>Team</th>
+                        <th>Marks</th>
+                        <th>Grade</th>
+                        <th>Points</th>
+                        <th class="no-print">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for res in results %}
+                        <tr>
+                            <td>
+                                <strong style="font-size: 1.15rem; color: {% if res.rank == 1 %}var(--secondary){% elif res.rank == 2 %}#cbd5e1{% elif res.rank == 3 %}#b45309{% else %}var(--text-muted){% endif %};">
+                                    #{{ res.rank }}
+                                </strong>
+                            </td>
+                            <td><strong>{{ res.member.name }}</strong> ({{ res.member.chest_no }})</td>
+                            <td>{{ res.member.team.name }}</td>
+                            <td>{{ res.total_marks }} / {{ program.max_marks }}</td>
+                            <td>
+                                {% if res.grade %}
+                                    <span class="badge badge-success">{{ res.grade }}</span>
+                                {% else %}
+                                    <span style="color: var(--text-muted);">N/A</span>
+                                {% endif %}
+                            </td>
+                            <td><strong>{{ res.points }}</strong></td>
+                            <td class="no-print">
+                                {% if res.published %}
+                                    <span class="badge badge-success" style="font-size: 0.7rem;">Published</span>
+                                {% else %}
+                                    <span class="badge badge-warning" style="font-size: 0.7rem;">Draft</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div style="text-align: center; padding: 3rem; color: var(--text-muted);">
+            <i class="bi bi-trophy" style="font-size: 3rem; display: block; margin-bottom: 1rem;"></i>
+            No results have been computed or declared for this program yet.
+        </div>
+    {% endif %}
+</div>
+
+<script>
+    document.getElementById('print-date').innerText = new Date().toLocaleString();
+</script>
+{% endblock %}

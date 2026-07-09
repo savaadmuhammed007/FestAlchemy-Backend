@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}Programs - FestAlchemy{% endblock %}
+
+{% block page_title %}<i class="bi bi-calendar-event"></i> Programs{% endblock %}
+
+{% block extra_css %}
+<style>
+.filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+.filter-bar select, .filter-bar input {
+    min-width: 180px;
+}
+@media print {
+  .no-print { display: none !important; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; flex-wrap:wrap; gap:1rem;" class="no-print">
+    <div style="display:flex; gap:.7rem;">
+        <button onclick="window.print()" class="btn btn-secondary">
+            <i class="bi bi-printer"></i> Print
+        </button>
+        <a href="{% url 'program_add' %}" class="btn">
+            <i class="bi bi-plus-circle"></i> Add Program
+        </a>
+    </div>
+</div>
+
+<!-- Filters -->
+<form method="GET" class="filter-bar no-print">
+    <input type="text" name="q" placeholder="🔍 Search by name…" value="{{ q }}">
+    <select name="category">
+        <option value="">All Categories</option>
+        {% for c in categories %}<option value="{{ c.id }}" {% if selected_cat == c.id|stringformat:"s" %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+    </select>
+    <button type="submit" class="btn" style="padding:.5rem 1.2rem;">
+        <i class="bi bi-funnel"></i> Filter
+    </button>
+    <a href="{% url 'program_list' %}" class="btn btn-secondary" style="padding:.5rem 1.2rem;">
+        <i class="bi bi-arrow-counterclockwise"></i> Reset
+    </a>
+</form>
+
+<div class="glass-panel">
+    <p style="color:var(--text-muted); font-size:.85rem; margin-bottom: 1rem;">{{ programs|length }} program(s) shown</p>
+    {% if programs %}
+    <div class="table-responsive">
+    <table>
+        <thead>
+            <tr>
+                <th>Item Title</th>
+                <th>Category</th>
+                <th>Type & Stage</th>
+                <th>Duration</th>
+                <th>Max Limit</th>
+                <th>Weight</th>
+                <th>Schedule & Venue</th>
+                <th class="no-print" style="text-align: right;">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in programs %}
+            <tr>
+                <td>
+                    <strong style="font-size: 1.05rem;">{{ p.name }}</strong>
+                </td>
+                <td>
+                    <span class="badge badge-primary">{{ p.category.name }}</span>
+                </td>
+                <td>
+                    <span class="badge badge-secondary" style="text-transform: capitalize; font-size: 0.75rem;">{{ p.get_type_display }}</span>
+                    <span class="badge badge-info" style="text-transform: capitalize; font-size: 0.75rem; background-color: var(--secondary);">{{ p.get_stage_type_display }}</span>
+                </td>
+                <td>
+                    <span style="font-weight: 600; font-size: 0.9rem;">{{ p.duration }} mins</span>
+                </td>
+                <td>
+                    {% if p.participant_limit %}
+                        <span class="badge badge-secondary">{{ p.participant_limit }}</span>
+                    {% else %}
+                        <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <div style="font-size: 0.8rem; line-height: 1.3;">
+                        1st: <strong style="color: var(--secondary);">{{ p.point_weightage_1st }}x</strong><br>
+                        2nd: <strong style="color: var(--secondary);">{{ p.point_weightage_2nd }}x</strong><br>
+                        3rd: <strong style="color: var(--secondary);">{{ p.point_weightage_3rd }}x</strong>
+                    </div>
+                </td>
+                <td>
+                    <span class="badge badge-warning" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; display: block; margin-bottom: 3px;">
+                        <i class="bi bi-clock"></i> {{ p.schedule|date:"M d, H:i"|default:"TBD" }}
+                    </span>
+                    {% if p.venue %}
+                    <span style="color: var(--text-muted); font-size: 0.75rem; display: block;"><i class="bi bi-geo-alt"></i> {{ p.venue }}</span>
+                    {% endif %}
+                </td>
+                <td style="text-align: right;" class="no-print">
+                    <div style="display:inline-flex; gap:.4rem; justify-content: flex-end;">
+                        <a href="{% url 'program_edit' p.pk %}" class="btn btn-secondary" style="padding:.45rem .7rem; font-size:.85rem;" title="Edit">
+                            <i class="bi bi-pencil"></i>
+                        </a>
+                        <a href="{% url 'program_delete' p.pk %}" class="btn btn-danger" style="padding:.45rem .7rem; font-size:.85rem;" title="Delete" onclick="return confirm('Delete this program?');">
+                            <i class="bi bi-trash"></i>
+                        </a>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="text-muted" style="text-align: center; padding: 2rem 0;">No programs match the current filters. <a href="{% url 'program_add' %}">Add one →</a></p>
+    {% endif %}
+</div>
+{% endblock %}

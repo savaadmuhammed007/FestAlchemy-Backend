@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+
+{% block title %}Members Registry Report - FestAlchemy{% endblock %}
+{% block page_title %}Members Report{% endblock %}
+
+{% block extra_css %}
+<style>
+    .filter-panel {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        margin-bottom: 2rem;
+        align-items: flex-end;
+    }
+    .filter-item {
+        flex: 1 1 200px;
+    }
+    
+    @media print {
+        body {
+            background: #ffffff !important;
+            color: #000000 !important;
+            font-size: 11pt !important;
+        }
+        .sidebar, .main-header, .mobile-header, .no-print, .btn, .filter-panel {
+            display: none !important;
+        }
+        .main-panel {
+            margin-left: 0 !important;
+        }
+        .main-content {
+            padding: 0 !important;
+            max-width: 100% !important;
+        }
+        .glass-panel {
+            background: none !important;
+            border: none !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+        }
+        .print-header {
+            display: block !important;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+        .print-header h1 {
+            font-size: 24pt;
+            font-weight: bold;
+            margin-bottom: 0.25rem;
+            color: #000000 !important;
+        }
+        .print-header p {
+            color: #555555 !important;
+            font-size: 11pt;
+        }
+        table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+        }
+        th, td {
+            padding: 8px 10px !important;
+            border-bottom: 1px solid #000000 !important;
+            color: #000000 !important;
+            background: none !important;
+        }
+        th {
+            border-bottom: 2px solid #000000 !important;
+        }
+        tr td:first-child, tr td:last-child {
+            border-radius: 0 !important;
+            border-left: none !important;
+            border-right: none !important;
+        }
+    }
+    .print-header {
+        display: none;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Print Header (Hidden on screen) -->
+<div class="print-header">
+    <h1>FestAlchemy Members Registry Report</h1>
+    <p>Generated on: <span id="print-date"></span></p>
+</div>
+
+<div class="glass-panel">
+    <!-- Back and Print Actions -->
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 2rem;" class="no-print">
+        <a href="{% url 'reports_dashboard' %}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Back to Dashboard
+        </a>
+        <button onclick="window.print()" class="btn btn-success">
+            <i class="bi bi-printer"></i> Print Report
+        </button>
+    </div>
+
+    <!-- Filters Panel -->
+    <form method="get" class="filter-panel no-print">
+        <div class="filter-item">
+            <label for="team-select" style="font-size: 0.85rem; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 0.5rem;">Filter by Team</label>
+            <select name="team" id="team-select" class="form-control" onchange="this.form.submit()">
+                <option value="">-- All Teams --</option>
+                {% for t in teams %}
+                    <option value="{{ t.id }}" {% if selected_team == t.id|stringformat:"i" %}selected{% endif %}>{{ t.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="filter-item">
+            <label for="category-select" style="font-size: 0.85rem; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 0.5rem;">Filter by Category</label>
+            <select name="category" id="category-select" class="form-control" onchange="this.form.submit()">
+                <option value="">-- All Categories --</option>
+                {% for cat in categories %}
+                    <option value="{{ cat.id }}" {% if selected_category == cat.id|stringformat:"i" %}selected{% endif %}>{{ cat.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% if selected_team or selected_category %}
+            <div style="flex: 0 0 auto;">
+                <a href="{% url 'report_members' %}" class="btn btn-secondary" style="height: calc(1.5em + 1.7rem); align-items: center;">Clear Filters</a>
+            </div>
+        {% endif %}
+    </form>
+
+    <h3 style="margin-bottom: 1.5rem; font-weight: 700; border-bottom: 1px solid var(--border-glass); padding-bottom: 0.5rem;">
+        Registered Participant Roster
+    </h3>
+
+    {% if members %}
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 120px;">Chest Number</th>
+                        <th>Name</th>
+                        <th>Team</th>
+                        <th>Category</th>
+                        <th>Registered Programs</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in members %}
+                        <tr>
+                            <td>
+                                <strong style="font-family: monospace; font-size: 1.1rem; color: var(--primary);">
+                                    {{ m.chest_no }}
+                                </strong>
+                            </td>
+                            <td><strong>{{ m.name }}</strong></td>
+                            <td>{{ m.team.name }}</td>
+                            <td><span class="badge badge-primary">{{ m.category.name }}</span></td>
+                            <td>
+                                {% if m.registered_programs.exists %}
+                                    <div style="display:flex; flex-wrap:wrap; gap:0.25rem;">
+                                        {% for prog in m.registered_programs.all %}
+                                            <span class="badge badge-success" style="font-size: 0.7rem; text-transform: none;">{{ prog.name }}</span>
+                                        {% endfor %}
+                                    </div>
+                                {% else %}
+                                    <span style="color: var(--text-muted); font-size:0.85rem;">None</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div style="text-align: center; padding: 3rem; color: var(--text-muted);">
+            <i class="bi bi-people" style="font-size: 3rem; display: block; margin-bottom: 1rem;"></i>
+            No members match the selected filters.
+        </div>
+    {% endif %}
+</div>
+
+<script>
+    document.getElementById('print-date').innerText = new Date().toLocaleString();
+</script>
+{% endblock %}

@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+{% block title %}Admin Panel - FestAlchemy{% endblock %}
+
+{% block page_title %}<i class="bi bi-speedometer2"></i> Admin Panel{% endblock %}
+
+{% block content %}
+<!-- Stats Grid -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-icon">
+            <i class="bi bi-calendar-event"></i>
+        </div>
+        <div class="stat-info">
+            <span class="stat-value">{{ programs_count }}</span>
+            <span class="stat-label">Programs</span>
+        </div>
+    </div>
+    
+    <div class="stat-card secondary">
+        <div class="stat-icon">
+            <i class="bi bi-tags"></i>
+        </div>
+        <div class="stat-info">
+            <span class="stat-value">{{ categories_count }}</span>
+            <span class="stat-label">Categories</span>
+        </div>
+    </div>
+    
+    <div class="stat-card success">
+        <div class="stat-icon">
+            <i class="bi bi-people"></i>
+        </div>
+        <div class="stat-info">
+            <span class="stat-value">{{ teams_count }}</span>
+            <span class="stat-label">Teams</span>
+        </div>
+    </div>
+
+    <div class="stat-card info">
+        <div class="stat-icon" style="background: rgba(14, 165, 233, 0.1); color: var(--info);">
+            <i class="bi bi-person-lines-fill"></i>
+        </div>
+        <div class="stat-info">
+            <span class="stat-value">{{ members_count }}</span>
+            <span class="stat-label">Members</span>
+        </div>
+    </div>
+    
+    <div class="stat-card {% if marksheets_pending > 0 %}danger{% else %}success{% endif %}">
+        <div class="stat-icon">
+            <i class="bi bi-journal-check"></i>
+        </div>
+        <div class="stat-info">
+            <span class="stat-value">{{ marksheets_pending }}</span>
+            <span class="stat-label">Pending Sheets</span>
+        </div>
+    </div>
+    
+    <div class="stat-card secondary">
+        <div class="stat-icon" style="background: rgba(255, 158, 0, 0.1); color: var(--secondary);">
+            <i class="bi bi-trophy"></i>
+        </div>
+        <div class="stat-info">
+            <span class="stat-value">{{ results_count }}</span>
+            <span class="stat-label">Result Entries</span>
+        </div>
+    </div>
+</div>
+
+<!-- Programs table -->
+<div class="glass-panel">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; flex-wrap: wrap; gap: 1rem;">
+        <h2 style="margin:0; font-size: 1.4rem;"><i class="bi bi-list-task"></i> Programs Overview</h2>
+        <a href="{% url 'program_add' %}" class="btn">
+            <i class="bi bi-plus-circle"></i> Add Program
+        </a>
+    </div>
+
+    {% if programs %}
+    <div class="table-responsive">
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Category</th>
+                <th>Schedule</th>
+                <th>Venue</th>
+                <th style="text-align: right;">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in programs %}
+            <tr>
+                <td>
+                    <strong style="font-size: 1.05rem;">{{ p.name }}</strong>
+                </td>
+                <td>
+                    <span class="badge badge-primary">{{ p.category.name }}</span>
+                </td>
+                <td>
+                    <span class="badge badge-warning" style="padding: 0.4rem 0.8rem;">
+                        <i class="bi bi-clock"></i> {{ p.schedule|date:"M d, H:i"|default:"TBD" }}
+                    </span>
+                </td>
+                <td>
+                    <span style="color: var(--text-muted);"><i class="bi bi-geo-alt"></i> {{ p.venue|default:"—" }}</span>
+                </td>
+                <td style="text-align: right;">
+                    <div style="display:inline-flex; gap:.4rem; justify-content: flex-end;">
+                        <a href="{% url 'call_participant' p.id %}" class="btn btn-secondary" style="padding:.45rem .8rem; font-size:.85rem;" title="Calling List">
+                            <i class="bi bi-megaphone"></i> Call
+                        </a>
+                        <a href="{% url 'compute_results' p.id %}" class="btn btn-success" style="padding:.45rem .8rem; font-size:.85rem;" title="Compute Ranks" onclick="return confirm('Compute & overwrite results for {{ p.name }}?');">
+                            <i class="bi bi-calculator"></i> Compute
+                        </a>
+                        <a href="{% url 'program_edit' p.id %}" class="btn btn-secondary" style="padding:.45rem .7rem; font-size:.85rem;" title="Edit">
+                            <i class="bi bi-pencil"></i>
+                        </a>
+                        <a href="{% url 'program_delete' p.id %}" class="btn btn-danger" style="padding:.45rem .7rem; font-size:.85rem;" title="Delete" onclick="return confirm('Delete this program?');">
+                            <i class="bi bi-trash"></i>
+                        </a>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="text-muted" style="text-align: center; padding: 2rem 0;">No programs yet. <a href="{% url 'program_add' %}">Add one →</a></p>
+    {% endif %}
+</div>
+
+<!-- Points Leaderboards -->
+<div style="display:grid; grid-template-columns: 1fr 1fr; gap:1.5rem; margin-top:1.5rem;">
+    <!-- Team Points -->
+    <div class="glass-panel">
+        <h2 style="font-size: 1.4rem; display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1.2rem;">
+            <i class="bi bi-trophy" style="color: var(--secondary);"></i> Team Leaderboard
+        </h2>
+        {% if team_points %}
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 20%;">Rank</th>
+                        <th>Team</th>
+                        <th style="text-align:right;">Points</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for tp in team_points %}
+                    <tr>
+                        <td>
+                            <strong style="color: var(--secondary);">#{{ forloop.counter }}</strong>
+                        </td>
+                        <td><strong>{{ tp.team.name }}</strong></td>
+                        <td style="text-align:right; font-weight:800; color:var(--secondary); font-size: 1.15rem;">{{ tp.total_points }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted" style="text-align: center; padding: 2rem 0;">No team points computed yet.</p>
+        {% endif %}
+    </div>
+
+    <!-- Individual Points -->
+    <div class="glass-panel">
+        <h2 style="font-size: 1.4rem; display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1.2rem;">
+            <i class="bi bi-star" style="color: var(--success);"></i> Individual Points (Top 20)
+        </h2>
+        {% if member_points %}
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 20%;">Rank</th>
+                        <th>Name</th>
+                        <th>Team</th>
+                        <th style="text-align:center;">Events</th>
+                        <th style="text-align:right;">Points</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for mp in member_points %}
+                    <tr>
+                        <td>
+                            <strong style="color: var(--success);">#{{ forloop.counter }}</strong>
+                        </td>
+                        <td><strong>{{ mp.member__name }}</strong></td>
+                        <td>
+                            <span class="badge badge-primary">{{ mp.member__team__name }}</span>
+                        </td>
+                        <td style="text-align:center; color:var(--text-muted);">{{ mp.events }}</td>
+                        <td style="text-align:right; font-weight:800; color:var(--success); font-size: 1.15rem;">{{ mp.total|floatformat:1 }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted" style="text-align: center; padding: 2rem 0;">No individual scores yet.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

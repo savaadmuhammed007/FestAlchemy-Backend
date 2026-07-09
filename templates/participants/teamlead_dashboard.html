@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block title %}Team Lead Dashboard - FestAlchemy{% endblock %}
+
+{% block page_title %}<i class="bi bi-speedometer2"></i> Team Lead Panel{% endblock %}
+
+{% block content %}
+<!-- Stats Grid -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-icon">
+            <i class="bi bi-shield-check"></i>
+        </div>
+        <div class="stat-info">
+            <span class="stat-value">{{ team.name }}</span>
+            <span class="stat-label">Your Team</span>
+        </div>
+    </div>
+    
+    <div class="stat-card secondary">
+        <div class="stat-icon">
+            <i class="bi bi-people"></i>
+        </div>
+        <div class="stat-info">
+            <span class="stat-value">{{ members|length }}</span>
+            <span class="stat-label">Registered Members</span>
+        </div>
+    </div>
+
+    <div class="stat-card success">
+        <div class="stat-icon">
+            <i class="bi bi-person-badge"></i>
+        </div>
+        <div class="stat-info">
+            <span class="stat-value">Lead</span>
+            <span class="stat-label">Access Role</span>
+        </div>
+    </div>
+</div>
+
+<div class="glass-panel">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; flex-wrap:wrap; gap:1rem;">
+        <h2 style="margin:0; font-size: 1.4rem;"><i class="bi bi-people-fill"></i> Team Members</h2>
+        <a href="{% url 'add_member' %}" class="btn">
+            <i class="bi bi-person-plus"></i> Add Member
+        </a>
+    </div>
+
+    {% if members %}
+    <div class="table-responsive">
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 15%;">Chest No</th>
+                <th>Name</th>
+                <th>Category</th>
+                <th>Assigned Programs</th>
+                <th style="text-align: right;">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for member in members %}
+            <tr>
+                <td>
+                    <strong style="color: var(--secondary); font-size: 1.05rem;">{{ member.chest_no }}</strong>
+                </td>
+                <td>
+                    <strong style="font-size: 1.05rem;">{{ member.name }}</strong>
+                </td>
+                <td>
+                    <span class="badge badge-primary">{{ member.category.name }}</span>
+                </td>
+                <td>
+                    <div style="display: flex; flex-wrap: wrap; gap: 0.3rem;">
+                    {% for prog in member.registered_programs.all %}
+                        <span class="badge badge-warning" style="font-size: 0.75rem;">{{ prog.name }}</span>
+                    {% empty %}
+                        <span style="color: var(--text-muted); font-size: 0.85rem;">None assigned</span>
+                    {% endfor %}
+                    </div>
+                </td>
+                <td style="text-align: right;">
+                    <a href="{% url 'assign_program' member.id %}" class="btn btn-secondary" style="padding: 0.45rem 1rem; font-size: 0.85rem;">
+                        <i class="bi bi-calendar-check"></i> Assign Programs
+                    </a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <div style="text-align:center; padding:3rem 0;">
+        <p class="text-muted" style="font-size:1.1rem; margin-bottom: 1.5rem;">No members registered yet.</p>
+        <a href="{% url 'add_member' %}" class="btn">
+            <i class="bi bi-person-plus"></i> Add First Member
+        </a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

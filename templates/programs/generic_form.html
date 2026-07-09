@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}{{ action }} {{ type|default:"" }} - FestAlchemy{% endblock %}
+
+{% block page_title %}<i class="bi bi-pencil-square"></i> {{ action }} {{ type|default:"Record" }}{% endblock %}
+
+{% block content %}
+<div class="row" style="margin-bottom: 1.5rem;" class="no-print">
+    <div>
+        <a href="javascript:history.back()" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Cancel & Go Back
+        </a>
+    </div>
+</div>
+
+<div class="glass-panel animate-fade-in" style="max-width:680px; margin: 0 auto;">
+    <form method="POST" enctype="multipart/form-data">
+        {% csrf_token %}
+        {% for field in form %}
+            {% if field.name == 'point_weightage_1st' %}
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="{{ form.point_weightage_1st.id_for_label }}">{{ form.point_weightage_1st.label }}</label>
+                        {{ form.point_weightage_1st }}
+                        {% for error in form.point_weightage_1st.errors %}<div style="color:var(--danger); font-size: 0.85rem; margin-top: 0.3rem;"><i class="bi bi-exclamation-triangle"></i> {{ error }}</div>{% endfor %}
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="{{ form.point_weightage_2nd.id_for_label }}">{{ form.point_weightage_2nd.label }}</label>
+                        {{ form.point_weightage_2nd }}
+                        {% for error in form.point_weightage_2nd.errors %}<div style="color:var(--danger); font-size: 0.85rem; margin-top: 0.3rem;"><i class="bi bi-exclamation-triangle"></i> {{ error }}</div>{% endfor %}
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="{{ form.point_weightage_3rd.id_for_label }}">{{ form.point_weightage_3rd.label }}</label>
+                        {{ form.point_weightage_3rd }}
+                        {% for error in form.point_weightage_3rd.errors %}<div style="color:var(--danger); font-size: 0.85rem; margin-top: 0.3rem;"><i class="bi bi-exclamation-triangle"></i> {{ error }}</div>{% endfor %}
+                    </div>
+                </div>
+            {% elif field.name == 'point_weightage_2nd' or field.name == 'point_weightage_3rd' %}
+                <!-- Rendered side-by-side already -->
+            {% else %}
+                <div class="form-group">
+                    <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                    {{ field }}
+                    {% if field.help_text %}<small class="text-muted"><i class="bi bi-info-circle"></i> {{ field.help_text }}</small>{% endif %}
+                    {% for error in field.errors %}<div style="color:var(--danger); font-size: 0.85rem; margin-top: 0.3rem;"><i class="bi bi-exclamation-triangle"></i> {{ error }}</div>{% endfor %}
+                </div>
+            {% endif %}
+        {% endfor %}
+        <button type="submit" class="btn" style="width:100%; margin-top:1rem;">
+            <i class="bi bi-check-circle"></i> Save Record
+        </button>
+    </form>
+</div>
+{% endblock %}

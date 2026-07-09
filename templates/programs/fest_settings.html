@@ -1,0 +1,284 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - FestAlchemy{% endblock %}
+
+{% block page_title %}<i class="bi bi-gear"></i> System Settings{% endblock %}
+
+{% block extra_css %}
+<style>
+.tab-container {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 2rem;
+    border-bottom: 1px solid var(--border-glass);
+    padding-bottom: 0.75rem;
+}
+.tab-btn {
+    background: transparent;
+    border: none;
+    padding: 0.6rem 1.2rem;
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 0.95rem;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.05);
+}
+.tab-btn.active {
+    color: var(--secondary);
+    background: rgba(123, 44, 191, 0.15);
+    border: 1px solid rgba(123, 44, 191, 0.3);
+}
+
+.settings-section {
+    display: none;
+}
+.settings-section.active {
+    display: block;
+}
+
+.settings-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 2rem;
+}
+
+@media (min-width: 992px) {
+    .settings-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+.badge-program {
+    display: inline-block;
+    padding: 0.2rem 0.5rem;
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid var(--border-glass);
+    border-radius: 4px;
+    font-size: 0.75rem;
+    margin: 2px;
+    color: var(--text-main);
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="tab-container no-print">
+    <button class="tab-btn {% if active_tab == 'event' %}active{% endif %}" onclick="switchTab('event')">
+        <i class="bi bi-calendar-event"></i> Event Details
+    </button>
+    <button class="tab-btn {% if active_tab == 'users' %}active{% endif %}" onclick="switchTab('users')">
+        <i class="bi bi-shield-lock"></i> Users & Access
+    </button>
+</div>
+
+<!-- SECTION 1: EVENT DETAILS -->
+<div id="section-event" class="settings-section {% if active_tab == 'event' %}active{% endif %} animate-fade-in">
+    <div class="glass-panel" style="max-width: 720px;">
+        <h3 style="margin-top: 0; margin-bottom: 1.5rem; color: var(--secondary);">
+            <i class="bi bi-sliders"></i> Event Settings
+        </h3>
+        
+        <form method="POST" enctype="multipart/form-data">
+            {% csrf_token %}
+            
+            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem; flex-wrap: wrap;">
+                <div class="form-group">
+                    <label for="{{ form.fest_name.id_for_label }}">Fest Name</label>
+                    {{ form.fest_name }}
+                    {% for error in form.fest_name.errors %}<div style="color:var(--danger); font-size: 0.85rem;">{{ error }}</div>{% endfor %}
+                </div>
+                
+                <div class="form-group">
+                    <label for="{{ form.year.id_for_label }}">Year</label>
+                    {{ form.year }}
+                    {% for error in form.year.errors %}<div style="color:var(--danger); font-size: 0.85rem;">{{ error }}</div>{% endfor %}
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="{{ form.tagline.id_for_label }}">Tagline</label>
+                {{ form.tagline }}
+                {% for error in form.tagline.errors %}<div style="color:var(--danger); font-size: 0.85rem;">{{ error }}</div>{% endfor %}
+            </div>
+            
+            <div class="form-group">
+                <label for="{{ form.logo.id_for_label }}">Logo Image</label>
+                {% if obj.logo %}
+                    <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 10px;">
+                        <img src="{{ obj.logo.url }}" alt="Fest Logo" style="height: 50px; border-radius: 8px; border: 1px solid var(--border-glass);">
+                        <span style="font-size: 0.85rem; color: var(--text-muted);">Current Logo</span>
+                    </div>
+                {% endif %}
+                {{ form.logo }}
+                {% for error in form.logo.errors %}<div style="color:var(--danger); font-size: 0.85rem;">{{ error }}</div>{% endfor %}
+            </div>
+            
+            <div class="form-group">
+                <label for="{{ form.point_system.id_for_label }}">Point System Allocation (JSON)</label>
+                {{ form.point_system }}
+                <small class="text-muted" style="display: block; margin-top: 5px; line-height: 1.4;">
+                    <i class="bi bi-info-circle"></i> Define points awarded to each rank. Example: <code>{"1st": 5, "2nd": 3, "3rd": 1}</code>
+                </small>
+                {% for error in form.point_system.errors %}<div style="color:var(--danger); font-size: 0.85rem;">{{ error }}</div>{% endfor %}
+            </div>
+            
+            <button type="submit" class="btn" style="margin-top: 1rem; width: 100%;">
+                <i class="bi bi-save"></i> Save Event Details
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- SECTION 2: USERS & ACCESS -->
+<div id="section-users" class="settings-section {% if active_tab == 'users' %}active{% endif %} animate-fade-in">
+    <div class="settings-grid">
+        
+        <!-- JUDGES PANEL -->
+        <div class="glass-panel">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                <h3 style="margin: 0; color: var(--secondary);">
+                    <i class="bi bi-person-badge"></i> Judges
+                </h3>
+                <a href="{% url 'judge_add' %}" class="btn" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">
+                    <i class="bi bi-plus-circle"></i> Add Judge
+                </a>
+            </div>
+            
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Username</th>
+                            <th>Name</th>
+                            <th>Assigned Programs</th>
+                            <th style="width: 100px; text-align: right;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for judge in judges %}
+                        <tr>
+                            <td style="font-weight: 600;">{{ judge.username }}</td>
+                            <td>{{ judge.get_full_name|default:"—" }}</td>
+                            <td>
+                                {% for prog in judge.assigned_programs.all %}
+                                    <span class="badge-program">{{ prog.name }}</span>
+                                {% empty %}
+                                    <span class="text-muted" style="font-size: 0.8rem;">None</span>
+                                {% endfor %}
+                            </td>
+                            <td style="text-align: right;">
+                                <div style="display: inline-flex; gap: 0.5rem; justify-content: flex-end;">
+                                    <a href="{% url 'user_edit' judge.id %}" class="btn btn-secondary" style="padding: 0.3rem 0.5rem; font-size: 0.8rem;" title="Edit Judge">
+                                        <i class="bi bi-pencil"></i>
+                                    </a>
+                                    <a href="{% url 'user_delete' judge.id %}" class="btn btn-danger" style="padding: 0.3rem 0.5rem; font-size: 0.8rem;" title="Delete Judge">
+                                        <i class="bi bi-trash"></i>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="4" class="text-muted" style="text-align: center; padding: 2rem;">
+                                <i class="bi bi-info-circle" style="font-size: 1.5rem; display: block; margin-bottom: 0.5rem;"></i>
+                                No judges registered yet.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- TEAM LEADS PANEL -->
+        <div class="glass-panel">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                <h3 style="margin: 0; color: var(--secondary);">
+                    <i class="bi bi-people"></i> Team Leads
+                </h3>
+                <a href="{% url 'team_add' %}" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">
+                    <i class="bi bi-plus-circle"></i> Add Team
+                </a>
+            </div>
+            
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Username</th>
+                            <th>Name</th>
+                            <th>Team</th>
+                            <th style="width: 100px; text-align: right;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for tl in teamleads %}
+                        <tr>
+                            <td style="font-weight: 600;">{{ tl.username }}</td>
+                            <td>{{ tl.get_full_name|default:"—" }}</td>
+                            <td>
+                                {% if tl.userprofile.team %}
+                                    <strong style="color: var(--secondary);">{{ tl.userprofile.team.name }}</strong>
+                                {% else %}
+                                    <span class="text-muted" style="font-size: 0.8rem;">No Team</span>
+                                {% endif %}
+                            </td>
+                            <td style="text-align: right;">
+                                <div style="display: inline-flex; gap: 0.5rem; justify-content: flex-end;">
+                                    <a href="{% url 'user_edit' tl.id %}" class="btn btn-secondary" style="padding: 0.3rem 0.5rem; font-size: 0.8rem;" title="Edit Team Lead">
+                                        <i class="bi bi-pencil"></i>
+                                    </a>
+                                    <a href="{% url 'user_delete' tl.id %}" class="btn btn-danger" style="padding: 0.3rem 0.5rem; font-size: 0.8rem;" title="Delete Team Lead">
+                                        <i class="bi bi-trash"></i>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="4" class="text-muted" style="text-align: center; padding: 2rem;">
+                                <i class="bi bi-info-circle" style="font-size: 1.5rem; display: block; margin-bottom: 0.5rem;"></i>
+                                No team leads registered yet.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function switchTab(tabId) {
+    // Update active tab buttons
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    // Find active tab button by checking text or index (we'll query based on event/users)
+    const btnIdx = (tabId === 'event') ? 0 : 1;
+    document.querySelectorAll('.tab-btn')[btnIdx].classList.add('active');
+    
+    // Toggle active sections
+    document.querySelectorAll('.settings-section').forEach(sec => {
+        sec.classList.remove('active');
+    });
+    document.getElementById('section-' + tabId).classList.add('active');
+    
+    // Update URL parameter without reloading
+    const newurl = window.location.protocol + "//" + window.location.host + window.location.pathname + '?tab=' + tabId;
+    window.history.pushState({path:newurl}, '', newurl);
+}
+</script>
+{% endblock %}

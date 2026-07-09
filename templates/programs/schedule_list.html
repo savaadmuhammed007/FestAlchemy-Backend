@@ -1,0 +1,165 @@
+{% extends "base.html" %}{% block title %}Program Scheduling{% endblock %}
+{% block extra_css %}<style>
+@media print {
+  .no-print { display: none !important; }
+  body { background: #fff !important; color: #111 !important; }
+  .glass-panel { border: 1px solid #ccc !important; background: #fff !important; box-shadow: none !important; }
+  table th, table td { color: #111 !important; border-bottom: 1px solid #ddd !important; }
+  h1 { color: #111 !important; }
+}
+.filter-bar { display:flex; flex-wrap:wrap; gap:.7rem; align-items:center; margin-bottom:1.2rem; }
+.filter-bar select {
+  padding:.45rem .8rem; border-radius:8px;
+  background:var(--bg-panel); border:1px solid var(--glass-border); color:var(--text-main);
+  font-size:.9rem; min-width:160px;
+}
+.schedule-badge {
+  display:inline-block; padding:3px 10px; border-radius:12px;
+  background:rgba(255,158,0,.2); color:var(--secondary-color); font-size:.85rem;
+}
+.edit-row { display:none; background:rgba(123,44,191,.08); }
+.edit-row.open { display:table-row; }
+.inline-input {
+  background:var(--bg-panel); border:1px solid var(--glass-border);
+  color:var(--text-main); border-radius:8px; padding:.4rem .7rem;
+  font-size:.9rem; width:100%;
+}
+.inline-input:focus { outline:2px solid var(--primary-color); }
+.save-btn { background:var(--primary-color); color:#fff; border:none; border-radius:8px;
+  padding:.45rem 1rem; cursor:pointer; font-size:.9rem; transition:opacity .2s; }
+.save-btn:hover { opacity:.85; }
+.saved-flash { color:#00b84c; font-size:.85rem; margin-left:.5rem; opacity:0; transition:opacity .4s; }
+</style>{% endblock %}
+
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;" class="no-print">
+    <div>
+        <h1>Program Scheduling</h1>
+        <p class="text-muted">Click ✏ to set date, time, and venue for each program.</p>
+    </div>
+    <button onclick="window.print()" class="btn btn-secondary">🖨 Print Schedule</button>
+</div>
+
+<!-- Filters -->
+<form method="GET" class="filter-bar no-print">
+    <select name="category">
+        <option value="">All Categories</option>
+        {% for c in categories %}<option value="{{ c.id }}" {% if sel_cat == c.id|stringformat:"s" %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+    </select>
+    <select name="has_venue">
+        <option value="">Any Venue</option>
+        <option value="yes" {% if sel_venue == "yes" %}selected{% endif %}>Has Venue</option>
+        <option value="no" {% if sel_venue == "no" %}selected{% endif %}>No Venue Set</option>
+    </select>
+    <button type="submit" class="btn" style="padding:.45rem 1.1rem;">Filter</button>
+    <a href="{% url 'schedule_list' %}" class="btn btn-secondary" style="padding:.45rem 1rem;">Reset</a>
+</form>
+
+<div class="glass-panel">
+    <p style="color:var(--text-muted);font-size:.85rem;margin-bottom:.8rem;" class="no-print">{{ programs|length }} program(s)</p>
+    {% if programs %}
+    <table style="width:100%;border-collapse:collapse;" id="schedule-table">
+        <thead><tr style="border-bottom:2px solid var(--glass-border);text-align:left;">
+            <th style="padding:.8rem;">Program</th>
+            <th style="padding:.8rem;">Category</th>
+            <th style="padding:.8rem;">Date &amp; Time</th>
+            <th style="padding:.8rem;">Venue</th>
+            <th style="padding:.8rem;text-align:center;">Participants</th>
+            <th style="padding:.8rem;" class="no-print">Edit</th>
+        </tr></thead>
+        <tbody>
+        {% for p in programs %}
+        <!-- Display row -->
+        <tr style="border-bottom:1px solid rgba(255,255,255,.05);" id="row-{{ p.id }}">
+            <td style="padding:.8rem;font-weight:600;">{{ p.name }}</td>
+            <td style="padding:.8rem;color:var(--text-muted);">{{ p.category.name }}</td>
+            <td style="padding:.8rem;" id="sched-display-{{ p.id }}">
+                {% if p.schedule %}
+                <span class="schedule-badge">📅 {{ p.schedule|date:"d M Y, H:i" }}</span>
+                {% else %}
+                <span style="color:var(--text-muted);">— TBD</span>
+                {% endif %}
+            </td>
+            <td style="padding:.8rem;" id="venue-display-{{ p.id }}">{{ p.venue|default:"—" }}</td>
+            <td style="padding:.8rem;text-align:center;">{{ p.registered_members.count }}</td>
+            <td style="padding:.8rem;" class="no-print">
+                <button class="btn btn-secondary" style="padding:.35rem .8rem;font-size:.85rem;"
+                    onclick="toggleEdit({{ p.id }})">✏ Schedule</button>
+            </td>
+        </tr>
+        <!-- Inline edit row -->
+        <tr class="edit-row" id="edit-{{ p.id }}">
+            <td colspan="6" style="padding:1rem 1.2rem;">
+                <div style="display:grid;grid-template-columns:1fr 1fr auto auto;gap:.8rem;align-items:end;">
+                    <div>
+                        <label style="font-size:.8rem;color:var(--text-muted);display:block;margin-bottom:.3rem;">Date &amp; Time</label>
+                        <input type="datetime-local" class="inline-input" id="dt-{{ p.id }}"
+                            value="{{ p.schedule|date:'Y-m-d\TH:i'|default:'' }}">
+                    </div>
+                    <div>
+                        <label style="font-size:.8rem;color:var(--text-muted);display:block;margin-bottom:.3rem;">Venue</label>
+                        <input type="text" class="inline-input" id="venue-{{ p.id }}"
+                            value="{{ p.venue }}" placeholder="e.g. Main Stage">
+                    </div>
+                    <button class="save-btn" onclick="saveSchedule({{ p.id }}, '{% url 'schedule_update' p.id %}')">
+                        ✓ Save
+                    </button>
+                    <button class="btn btn-secondary" style="padding:.45rem .9rem;" onclick="toggleEdit({{ p.id }})">
+                        Cancel
+                    </button>
+                </div>
+                <span class="saved-flash" id="flash-{{ p.id }}">✔ Saved!</span>
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}<p class="text-muted">No programs match the current filters.</p>{% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const csrf = document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+
+function toggleEdit(id) {
+    const row = document.getElementById('edit-' + id);
+    row.classList.toggle('open');
+}
+
+function saveSchedule(id, url) {
+    const dt = document.getElementById('dt-' + id).value;
+    const venue = document.getElementById('venue-' + id).value;
+
+    fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-CSRFToken': csrf,
+        },
+        body: `schedule=${encodeURIComponent(dt)}&venue=${encodeURIComponent(venue)}`
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status === 'ok') {
+            // Update display cells
+            const schedCell = document.getElementById('sched-display-' + id);
+            const venueCell = document.getElementById('venue-display-' + id);
+            schedCell.innerHTML = data.schedule
+                ? `<span class="schedule-badge">📅 ${data.schedule}</span>`
+                : `<span style="color:var(--text-muted);">— TBD</span>`;
+            venueCell.textContent = data.venue || '—';
+
+            // Flash "Saved!" then close
+            const flash = document.getElementById('flash-' + id);
+            flash.style.opacity = '1';
+            setTimeout(() => {
+                flash.style.opacity = '0';
+                toggleEdit(id);
+            }, 1200);
+        }
+    })
+    .catch(() => alert('Failed to save. Please try again.'));
+}
+</script>
+{% endblock %}

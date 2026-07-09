@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}Scoring & Results - FestAlchemy{% endblock %}
+
+{% block page_title %}<i class="bi bi-trophy"></i> Scoring & Results{% endblock %}
+
+{% block extra_css %}
+<style>
+.filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+.filter-bar select {
+    min-width: 180px;
+}
+@media print {
+  .no-print { display: none !important; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; flex-wrap:wrap; gap:1rem;" class="no-print">
+    <div style="display:flex; gap:.7rem;">
+        <button onclick="window.print()" class="btn btn-secondary">
+            <i class="bi bi-printer"></i> Print
+        </button>
+        <a href="{% url 'result_add' %}" class="btn">
+            <i class="bi bi-plus-circle"></i> Add Manual Result
+        </a>
+    </div>
+</div>
+
+<!-- Filters -->
+<form method="GET" class="filter-bar no-print">
+    <select name="category">
+        <option value="">All Categories</option>
+        {% for c in categories %}<option value="{{ c.id }}" {% if sel_cat == c.id|stringformat:"s" %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+    </select>
+    <select name="published">
+        <option value="">All Status</option>
+        <option value="yes" {% if sel_published == "yes" %}selected{% endif %}>📢 Declared (Live)</option>
+        <option value="no" {% if sel_published == "no" %}selected{% endif %}>⬜ Hidden (Draft)</option>
+    </select>
+    <button type="submit" class="btn" style="padding:.5rem 1.2rem;">
+        <i class="bi bi-funnel"></i> Filter
+    </button>
+    <a href="{% url 'result_list' %}" class="btn btn-secondary" style="padding:.5rem 1.2rem;">
+        <i class="bi bi-arrow-counterclockwise"></i> Reset
+    </a>
+</form>
+
+<div class="glass-panel animate-fade-in" style="margin-bottom: 2rem;">
+    <h2 style="font-size: 1.4rem; display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1.2rem;">
+        <i class="bi bi-broadcast" style="color: var(--success);"></i> Declared Results
+    </h2>
+    <p style="color:var(--text-muted); font-size:.85rem; margin-bottom: 1rem;">{{ declared_programs|length }} program(s) with computed results</p>
+    {% if declared_programs %}
+    <div class="table-responsive">
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 35%;">Program</th>
+                <th>Category</th>
+                <th>Status</th>
+                <th class="no-print" style="text-align: right; width: 340px;">Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in declared_programs %}
+            <tr>
+                <td>
+                    <strong style="font-size: 1.05rem;">{{ p.name }}</strong>
+                </td>
+                <td>
+                    <span class="badge badge-primary">{{ p.category.name }}</span>
+                </td>
+                <td>
+                    {% if p.is_published %}
+                        <span class="badge badge-success"><i class="bi bi-broadcast"></i> Declared Live</span>
+                    {% else %}
+                        <span class="badge badge-warning"><i class="bi bi-eye-slash-fill"></i> Hidden Draft</span>
+                    {% endif %}
+                </td>
+                <td style="text-align: right;" class="no-print">
+                    <div style="display:inline-flex; gap:.4rem; align-items: center;">
+                        <a href="{% url 'result_program_detail' p.id %}" class="btn btn-secondary" style="padding:.45rem .8rem; font-size:.85rem;">
+                            <i class="bi bi-eye"></i> Details
+                        </a>
+                        <a href="{% url 'toggle_publish_program' p.id %}" class="btn {% if p.is_published %}btn-secondary{% else %}btn-success{% endif %}" style="padding:.45rem .8rem; font-size:.85rem;" title="Declare / Hide results in all models">
+                            {% if p.is_published %}
+                                <i class="bi bi-eye-slash"></i> Hide
+                            {% else %}
+                                <i class="bi bi-send-check"></i> Final Declare
+                            {% endif %}
+                        </a>
+                        <a href="{% url 'compute_results' p.id %}" class="btn" style="padding:.45rem .8rem; font-size:.85rem; background-color: var(--primary);" title="Re-compute results" onclick="return confirm('Re-compute results?');">
+                            <i class="bi bi-calculator"></i> Re-compute
+                        </a>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="text-muted" style="text-align: center; padding: 2rem 0; margin: 0;">No declared results match the current filters.</p>
+    {% endif %}
+</div>
+
+<div class="glass-panel animate-fade-in" style="animation-delay: 0.1s;">
+    <h2 style="font-size: 1.4rem; display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1.2rem;">
+        <i class="bi bi-clock-history" style="color: var(--secondary);"></i> Judge Marked (Pending Ranks)
+    </h2>
+    <p style="color:var(--text-muted); font-size:.85rem; margin-bottom: 1rem;">{{ pending_programs|length }} program(s) awaiting computation</p>
+    {% if pending_programs %}
+    <div class="table-responsive">
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 35%;">Program</th>
+                <th>Category</th>
+                <th>Status</th>
+                <th class="no-print" style="text-align: right; width: 340px;">Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in pending_programs %}
+            <tr>
+                <td>
+                    <strong style="font-size: 1.05rem;">{{ p.name }}</strong>
+                </td>
+                <td>
+                    <span class="badge badge-primary">{{ p.category.name }}</span>
+                </td>
+                <td>
+                    {% if p.submitted_sheets > 0 %}
+                        <span class="badge badge-info" style="background-color: var(--info);"><i class="bi bi-clock-history"></i> Pending Rank ({{ p.submitted_sheets }}/{{ p.total_sheets }} submitted)</span>
+                    {% else %}
+                        <span class="badge badge-secondary"><i class="bi bi-hourglass-split"></i> Awaiting Marks (0/{{ p.total_sheets }})</span>
+                    {% endif %}
+                </td>
+                <td style="text-align: right;" class="no-print">
+                    <div style="display:inline-flex; gap:.4rem; align-items: center;">
+                        {% if p.submitted_sheets > 0 %}
+                            <a href="{% url 'compute_results' p.id %}" class="btn btn-success" style="padding:.45rem .8rem; font-size:.85rem;" title="Compute Ranks" onclick="return confirm('Compute results? This will rank participants.');">
+                                <i class="bi bi-calculator"></i> Compute Ranks
+                            </a>
+                        {% else %}
+                            <button class="btn btn-secondary" style="padding:.45rem .8rem; font-size:.85rem; opacity: 0.6; cursor: not-allowed;" disabled title="Waiting for judge marks">
+                                <i class="bi bi-hourglass"></i> Awaiting Marks
+                            </button>
+                        {% endif %}
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="text-muted" style="text-align: center; padding: 2rem 0; margin: 0;">No pending judge-marked programs found matching the filters.</p>
+    {% endif %}
+</div>
+{% endblock %}

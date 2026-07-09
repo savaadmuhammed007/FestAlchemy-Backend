@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+
+{% block title %}Add Member - FestAlchemy{% endblock %}
+
+{% block page_title %}<i class="bi bi-person-plus"></i> Add New Member{% endblock %}
+
+{% block extra_css %}
+<style>
+.program-checkbox-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 0.8rem;
+    margin-top: .6rem;
+}
+.program-item {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    padding: .8rem 1rem;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border-glass);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: var(--transition);
+}
+.program-item:hover {
+    background: rgba(139, 92, 246, 0.1);
+    border-color: rgba(139, 92, 246, 0.4);
+}
+.program-item input[type="checkbox"] {
+    width: 1.2rem;
+    height: 1.2rem;
+    accent-color: var(--secondary);
+    cursor: pointer;
+}
+.program-item label {
+    margin: 0;
+    cursor: pointer;
+    font-size: .95rem;
+    font-weight: 500;
+    color: var(--text-main);
+}
+#program-section {
+    margin-top: 1.5rem;
+    border-top: 1px solid var(--border-glass);
+    padding-top: 1.5rem;
+}
+#no-programs {
+    color: var(--text-muted);
+    font-size: .95rem;
+    display: none;
+    padding: 1rem 0;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row" style="margin-bottom: 1.5rem;" class="no-print">
+    <div>
+        <a href="{% url 'teamlead_dashboard' %}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Back to Dashboard
+        </a>
+    </div>
+</div>
+
+<div class="glass-panel animate-fade-in" style="max-width: 720px; margin: 0 auto;">
+    <form method="POST" id="add-member-form">
+        {% csrf_token %}
+
+        {% for field in form %}
+        <div class="form-group">
+            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {% if field.help_text %}<small class="text-muted"><i class="bi bi-info-circle"></i> {{ field.help_text }}</small>{% endif %}
+            {% for error in field.errors %}<div style="color:var(--danger); font-size: 0.85rem; margin-top: 0.3rem;"><i class="bi bi-exclamation-triangle"></i> {{ error }}</div>{% endfor %}
+        </div>
+        {% endfor %}
+
+        <!-- Dynamic Program Selection -->
+        <div id="program-section">
+            <label style="display:block; margin-bottom:.6rem; color:var(--text-main); font-weight: 600; font-size:1.05rem;">
+                <i class="bi bi-bookmark-star" style="color: var(--secondary);"></i> Assign Programs <small style="font-weight: normal; color: var(--text-muted);">(optional — filtered by category)</small>
+            </label>
+            <div id="program-list" class="program-checkbox-list">
+                <p id="no-programs" style="display:block;"><i class="bi bi-info-circle"></i> Select a category above to see available programs.</p>
+            </div>
+        </div>
+
+        <button type="submit" class="btn" style="width:100%; margin-top:2rem;">
+            <i class="bi bi-check-circle"></i> Add Member & Save
+        </button>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const programsByCategory = {{ programs_by_cat_json|safe }};
+
+const categorySelect = document.getElementById('id_category');
+const programList    = document.getElementById('program-list');
+const noPrograms     = document.getElementById('no-programs');
+
+function renderPrograms(catId) {
+    // Clear existing checkboxes (keep the "no programs" p)
+    Array.from(programList.children).forEach(el => {
+        if (el.id !== 'no-programs') el.remove();
+    });
+
+    const programs = programsByCategory[catId] || [];
+
+    if (programs.length === 0) {
+        noPrograms.style.display = 'block';
+        noPrograms.innerHTML = '<i class="bi bi-info-circle"></i> No programs found for this category.';
+        return;
+    }
+
+    noPrograms.style.display = 'none';
+
+    programs.forEach(prog => {
+        const item = document.createElement('div');
+        item.className = 'program-item';
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.name = 'programs';
+        cb.value = prog.id;
+        cb.id = `prog_${prog.id}`;
+
+        const lbl = document.createElement('label');
+        lbl.htmlFor = `prog_${prog.id}`;
+        lbl.textContent = prog.name;
+
+        // Clicking the whole row toggles the checkbox
+        item.addEventListener('click', (e) => {
+            if (e.target !== cb) cb.checked = !cb.checked;
+        });
+
+        item.appendChild(cb);
+        item.appendChild(lbl);
+        programList.appendChild(item);
+    });
+}
+
+categorySelect.addEventListener('change', function () {
+    renderPrograms(this.value);
+});
+
+// If category is already selected on page load (e.g. validation error re-render)
+if (categorySelect.value) {
+    renderPrograms(categorySelect.value);
+}
+</script>
+{% endblock %}

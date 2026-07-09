@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Assign Programs - {{ member.name }} - FestAlchemy{% endblock %}
+
+{% block page_title %}<i class="bi bi-bookmark-check"></i> Assign Programs{% endblock %}
+
+{% block content %}
+<div class="row" style="margin-bottom: 1.5rem;" class="no-print">
+    <div>
+        <a href="{% url 'teamlead_dashboard' %}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Back to Dashboard
+        </a>
+    </div>
+</div>
+
+<div class="glass-panel animate-fade-in" style="max-width: 680px; margin: 0 auto;">
+    <div style="margin-bottom: 1.5rem;">
+        <h3 style="margin-bottom: 0.2rem; color: var(--secondary);">{{ member.name }}</h3>
+        <p class="text-muted" style="margin: 0;">Chest No: {{ member.chest_no }} • Category: {{ member.category.name }}</p>
+    </div>
+
+    {% if available_programs %}
+    <form method="POST">
+        {% csrf_token %}
+        <div class="form-group" style="margin-bottom: 1.5rem;">
+            <p style="margin-bottom: 1rem; color: var(--text-main); font-weight: 500;">Select the programs this member will participate in:</p>
+            
+            <div style="display: flex; flex-direction: column; gap: 0.8rem;">
+                {% for program in available_programs %}
+                <div style="padding: 1rem; background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; display: flex; align-items: center; transition: var(--transition);">
+                    <input type="checkbox" id="prog_{{ program.id }}" name="programs" value="{{ program.id }}" 
+                        {% if program.id in registered_ids %}checked{% endif %}
+                        style="margin-right: 1.2rem; width: 1.3rem; height: 1.3rem; accent-color: var(--secondary); cursor: pointer;">
+                    <label for="prog_{{ program.id }}" style="margin: 0; cursor: pointer; display: flex; flex-direction: column; flex-grow: 1;">
+                        <span style="font-weight: 600; color: var(--text-main); font-size: 1.05rem;">{{ program.name }}</span>
+                        <span style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem;">
+                            <i class="bi bi-calendar3"></i> {{ program.schedule|date:"M d, H:i" }} &nbsp;&bull;&nbsp; <i class="bi bi-geo-alt"></i> {{ program.venue }}
+                        </span>
+                    </label>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        
+        <button type="submit" class="btn" style="width: 100%;">
+            <i class="bi bi-check-circle"></i> Save Assignments
+        </button>
+    </form>
+    {% else %}
+    <p class="text-muted" style="text-align: center; padding: 2rem 0;">
+        <i class="bi bi-info-circle"></i> No programs have been added to the {{ member.category.name }} category yet.
+    </p>
+    {% endif %}
+</div>
+{% endblock %}

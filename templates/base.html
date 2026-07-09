@@ -1,0 +1,258 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="College Fest Management System">
+    <title>{% block title %}FestAlchemy{% endblock %}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="{% static 'css/styles.css' %}">
+    <script>
+        // Apply theme immediately to prevent flashing
+        (function() {
+            const savedTheme = localStorage.getItem('theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        })();
+    </script>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="app-sidebar">
+            <a href="{% url 'home' %}" class="sidebar-brand">
+                <i class="bi bi-magic"></i> FestAlchemy
+            </a>
+            
+            {% if user.is_authenticated %}
+            <div class="sidebar-profile">
+                <i class="bi bi-person-circle"></i>
+                <div class="sidebar-profile-info">
+                    <span class="sidebar-profile-name">{{ user.username }}</span>
+                    <span class="sidebar-profile-role">
+                        {% if user.userprofile %}
+                            {{ user.userprofile.get_role_display }}
+                        {% else %}
+                            User
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+            {% endif %}
+
+            <ul class="sidebar-menu">
+                <li>
+                    <a href="{% url 'home' %}" class="sidebar-link {% if request.resolver_match.url_name == 'home' %}active{% endif %}">
+                        <i class="bi bi-house"></i> Public Home
+                    </a>
+                </li>
+                {% if user.is_authenticated %}
+                    {% if user.userprofile.role == 'admin' %}
+                        <!-- CORE SECTION -->
+                        <li class="sidebar-header" style="margin-top: 0.2rem; border-top: none;">Core</li>
+                        <li>
+                            <a href="{% url 'admin_dashboard' %}" class="sidebar-link {% if request.resolver_match.url_name == 'admin_dashboard' %}active{% endif %}">
+                               <i class="bi bi-speedometer2"></i> Dashboard
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{% url 'fest_settings' %}" class="sidebar-link {% if request.resolver_match.url_name == 'fest_settings' %}active{% endif %}">
+                                <i class="bi bi-gear"></i> Fest Settings
+                            </a>
+                        </li>
+
+                        <!-- SETUP & REGISTRY SECTION -->
+                        <li class="sidebar-header">Setup & Registry</li>
+                        <li>
+                            <a href="{% url 'program_list' %}" class="sidebar-link {% if request.resolver_match.url_name == 'program_list' or request.resolver_match.url_name == 'program_add' or request.resolver_match.url_name == 'program_edit' %}active{% endif %}">
+                                <i class="bi bi-calendar-event"></i> Programs
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{% url 'category_list' %}" class="sidebar-link {% if request.resolver_match.url_name == 'category_list' or request.resolver_match.url_name == 'category_add' or request.resolver_match.url_name == 'category_edit' %}active{% endif %}">
+                                <i class="bi bi-tags"></i> Categories
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{% url 'team_list' %}" class="sidebar-link {% if request.resolver_match.url_name == 'team_list' or request.resolver_match.url_name == 'team_add' or request.resolver_match.url_name == 'team_edit' %}active{% endif %}">
+                                <i class="bi bi-people"></i> Teams
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{% url 'member_list' %}" class="sidebar-link {% if request.resolver_match.url_name == 'member_list' %}active{% endif %}">
+                                <i class="bi bi-person-lines-fill"></i> Members
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{% url 'judge_assignment_list' %}" class="sidebar-link {% if request.resolver_match.url_name == 'judge_assignment_list' or request.resolver_match.url_name == 'judge_assignment_edit' %}active{% endif %}">
+                                <i class="bi bi-person-badge"></i> Judge Assignment
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{% url 'grade_settings_list' %}" class="sidebar-link {% if request.resolver_match.url_name == 'grade_settings_list' or request.resolver_match.url_name == 'grade_setting_edit' %}active{% endif %}">
+                                <i class="bi bi-patch-check"></i> Grade Settings
+                            </a>
+                        </li>
+
+                        <!-- LIVE OPERATIONS SECTION -->
+                        <li class="sidebar-header">Live Operations</li>
+                        <li>
+                            <a href="{% url 'spin_lot_list' %}" class="sidebar-link {% if request.resolver_match.url_name == 'spin_lot_list' or request.resolver_match.url_name == 'call_participant' %}active{% endif %}">
+                                <i class="bi bi-shuffle"></i> Spin Lot
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{% url 'marksheet_list' %}" class="sidebar-link {% if request.resolver_match.url_name == 'marksheet_list' or request.resolver_match.url_name == 'marksheet_program_detail' %}active{% endif %}">
+                                <i class="bi bi-journal-check"></i> Marksheets
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{% url 'result_list' %}" class="sidebar-link {% if request.resolver_match.url_name == 'result_list' or request.resolver_match.url_name == 'result_program_detail' or request.resolver_match.url_name == 'result_add' or request.resolver_match.url_name == 'result_edit' or request.resolver_match.url_name == 'toggle_publish_program' or request.resolver_match.url_name == 'compute_results' %}active{% endif %}">
+                                <i class="bi bi-trophy"></i> Scoring & Results
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{% url 'schedule_list' %}" class="sidebar-link {% if request.resolver_match.url_name == 'schedule_list' %}active{% endif %}">
+                                <i class="bi bi-clock-history"></i> Schedule
+                            </a>
+                        </li>
+
+                        <!-- REPORTS SECTION -->
+                        <li class="sidebar-header">Reports</li>
+                        <li>
+                            <a href="{% url 'reports_dashboard' %}" class="sidebar-link {% if request.resolver_match.url_name == 'reports_dashboard' or request.resolver_match.url_name == 'report_results' or request.resolver_match.url_name == 'report_members' or request.resolver_match.url_name == 'report_marksheets' or request.resolver_match.url_name == 'report_schedule' or request.resolver_match.url_name == 'report_teampoints' %}active{% endif %}">
+                                <i class="bi bi-file-earmark-bar-graph"></i> Reports Center
+                            </a>
+                        </li>
+                    {% elif user.userprofile.role == 'judge' %}
+                        <li>
+                            <a href="{% url 'judge_dashboard' %}" class="sidebar-link {% if request.resolver_match.url_name == 'judge_dashboard' %}active{% endif %}">
+                                <i class="bi bi-speedometer2"></i> Dashboard
+                            </a>
+                        </li>
+                    {% elif user.userprofile.role == 'teamlead' %}
+                        <li>
+                            <a href="{% url 'teamlead_dashboard' %}" class="sidebar-link {% if request.resolver_match.url_name == 'teamlead_dashboard' %}active{% endif %}">
+                                <i class="bi bi-speedometer2"></i> Dashboard
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{% url 'add_member' %}" class="sidebar-link {% if request.resolver_match.url_name == 'add_member' or request.resolver_match.url_name == 'assign_program' %}active{% endif %}">
+                                <i class="bi bi-person-plus"></i> Register Members
+                            </a>
+                        </li>
+                    {% endif %}
+                {% endif %}
+            </ul>
+
+            <div class="sidebar-footer">
+                <button id="theme-toggle" class="theme-btn" title="Toggle Theme">
+                    <i id="theme-icon" class="bi bi-moon-stars"></i>
+                </button>
+                {% if user.is_authenticated %}
+                    <form method="post" action="{% url 'logout' %}" style="width:100%;">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-secondary btn-danger" style="width:100%; justify-content:center;">
+                            <i class="bi bi-box-arrow-right"></i> Logout
+                        </button>
+                    </form>
+                {% else %}
+                    <a href="{% url 'login' %}" class="btn" style="justify-content:center;">
+                        <i class="bi bi-box-arrow-in-right"></i> Login
+                    </a>
+                    <a href="{% url 'signup' %}" class="btn btn-secondary" style="justify-content:center;">
+                        <i class="bi bi-person-plus"></i> Sign Up
+                    </a>
+                {% endif %}
+            </div>
+        </aside>
+
+        <!-- Main Panel -->
+        <div class="main-panel">
+            <!-- Mobile Sticky Header -->
+            <header class="mobile-header">
+                <a href="{% url 'home' %}" style="font-weight: 800; font-size: 1.3rem; text-decoration: none; color: inherit;">FestAlchemy</a>
+                <button class="menu-toggle" id="sidebar-toggle-btn">
+                    <i class="bi bi-list"></i>
+                </button>
+            </header>
+
+            <!-- Desktop Header -->
+            <header class="main-header no-print">
+                <h3 style="margin: 0; font-weight: 700;">
+                    {% block page_title %}Dashboard{% endblock %}
+                </h3>
+                <div style="display:flex; align-items:center; gap:1.5rem;">
+                    {% if user.is_authenticated %}
+                        <span style="font-size:0.95rem; color:var(--text-muted)">
+                            Logged in as <strong style="color:var(--text-main)">{{ user.username }}</strong>
+                        </span>
+                    {% endif %}
+                </div>
+            </header>
+
+            <!-- Main Page Content -->
+            <main class="main-content">
+                {% if messages %}
+                    <div class="messages" style="margin-bottom: 1.5rem;">
+                        {% for message in messages %}
+                            <div class="glass-panel" style="padding: 1rem 1.5rem; margin-bottom: 0.8rem; border-left: 4px solid {% if message.tags == 'error' or message.tags == 'danger' %}var(--danger){% else %}var(--success){% endif %}; animation: slideUp 0.3s ease;">
+                                <div style="display:flex; align-items:center; gap:0.75rem;">
+                                    <i class="bi {% if message.tags == 'error' or message.tags == 'danger' %}bi-exclamation-triangle-fill{% else %}bi-check-circle-fill{% endif %}" style="color: {% if message.tags == 'error' or message.tags == 'danger' %}var(--danger){% else %}var(--success){% endif %};"></i>
+                                    <span>{{ message }}</span>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+                
+                {% block content %}
+                {% endblock content %}
+            </main>
+        </div>
+    </div>
+
+    <!-- Theme Toggle and Mobile Drawer Controller -->
+    <script>
+        const themeToggle = document.getElementById('theme-toggle');
+        const themeIcon = document.getElementById('theme-icon');
+        const sidebar = document.getElementById('app-sidebar');
+        const sidebarToggleBtn = document.getElementById('sidebar-toggle-btn');
+
+        function updateIcon(theme) {
+            themeIcon.className = theme === 'dark' ? 'bi bi-sun' : 'bi bi-moon-stars';
+        }
+
+        // Initialize theme icon
+        updateIcon(document.documentElement.getAttribute('data-theme'));
+
+        themeToggle.addEventListener('click', () => {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateIcon(newTheme);
+        });
+
+        // Mobile drawer toggle
+        if (sidebarToggleBtn) {
+            sidebarToggleBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                sidebar.classList.toggle('active');
+            });
+        }
+
+        // Close sidebar when clicking outside on mobile
+        document.addEventListener('click', (e) => {
+            if (window.innerWidth <= 768 && sidebar.classList.contains('active')) {
+                if (!sidebar.contains(e.target) && e.target !== sidebarToggleBtn && !sidebarToggleBtn.contains(e.target)) {
+                    sidebar.classList.remove('active');
+                }
+            }
+        });
+    </script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

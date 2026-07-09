@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Add Team & Register Team Lead - FestAlchemy{% endblock %}
+
+{% block page_title %}<i class="bi bi-people"></i> Add New Team{% endblock %}
+
+{% block extra_css %}
+<style>
+.section-divider {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin: 2rem 0 1.2rem;
+    color: var(--secondary);
+    font-size: .9rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+}
+.section-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border-glass);
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row" style="margin-bottom: 1.5rem;" class="no-print">
+    <div>
+        <a href="{% url 'team_list' %}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Back to List
+        </a>
+    </div>
+</div>
+
+<div class="glass-panel animate-fade-in" style="max-width:680px; margin: 0 auto;">
+    <form method="POST">
+        {% csrf_token %}
+
+        <!-- Team Info -->
+        <div class="section-divider">Team Information</div>
+
+        <div class="form-group">
+            <label for="team_name">Team Name</label>
+            <input type="text" id="team_name" name="team_name"
+                   class="form-control" placeholder="e.g. Alpha Team"
+                   value="{{ team_name_value }}" required>
+            {% if team_name_error %}
+                <div style="color:var(--danger); font-size: 0.85rem; margin-top: 0.3rem;"><i class="bi bi-exclamation-triangle"></i> {{ team_name_error }}</div>
+            {% endif %}
+        </div>
+
+        <!-- Team Lead Account -->
+        <div class="section-divider">Team Lead Account</div>
+        <p class="text-muted" style="font-size:.85rem; margin-bottom:1.5rem; line-height: 1.4;">
+            <i class="bi bi-info-circle"></i> A new login account will be created for this team lead automatically.
+        </p>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 1rem; flex-wrap: wrap;">
+            <div class="form-group">
+                <label for="{{ user_form.first_name.id_for_label }}">First Name</label>
+                {{ user_form.first_name }}
+                {% for e in user_form.first_name.errors %}<div style="color:var(--danger); font-size: 0.85rem; margin-top: 0.3rem;">{{ e }}</div>{% endfor %}
+            </div>
+            <div class="form-group">
+                <label for="{{ user_form.last_name.id_for_label }}">Last Name</label>
+                {{ user_form.last_name }}
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="{{ user_form.username.id_for_label }}">Username</label>
+            {{ user_form.username }}
+            {% for e in user_form.username.errors %}<div style="color:var(--danger); font-size: 0.85rem; margin-top: 0.3rem;">{{ e }}</div>{% endfor %}
+            <small class="text-muted"><i class="bi bi-info-circle"></i> Used for login — must be unique.</small>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 1rem; flex-wrap: wrap;">
+            <div class="form-group">
+                <label for="{{ user_form.password.id_for_label }}">Password</label>
+                {{ user_form.password }}
+                {% for e in user_form.password.errors %}<div style="color:var(--danger); font-size: 0.85rem; margin-top: 0.3rem;">{{ e }}</div>{% endfor %}
+            </div>
+            <div class="form-group">
+                <label for="{{ user_form.confirm_password.id_for_label }}">Confirm Password</label>
+                {{ user_form.confirm_password }}
+                {% for e in user_form.confirm_password.errors %}<div style="color:var(--danger); font-size: 0.85rem; margin-top: 0.3rem;">{{ e }}</div>{% endfor %}
+            </div>
+        </div>
+
+        <button type="submit" class="btn" style="width:100%; margin-top:1.5rem;">
+            <i class="bi bi-plus-circle"></i> Create Team & Register Lead
+        </button>
+    </form>
+</div>
+{% endblock %}

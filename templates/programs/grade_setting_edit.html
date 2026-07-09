@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block title %}Configure Grading Rules - {{ program.name }} - FestAlchemy{% endblock %}
+
+{% block page_title %}<i class="bi bi-sliders"></i> Configure Grading Rules: {{ program.name }}{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; flex-wrap:wrap; gap:1rem;">
+    <div>
+        <p class="text-muted" style="margin: 0;">
+            <i class="bi bi-tags"></i> Category: {{ program.category.name }} | 
+            <i class="bi bi-patch-question"></i> Max Marks: <strong>{{ program.max_marks }}</strong>
+        </p>
+    </div>
+    <a href="{% url 'grade_settings_list' %}" class="btn btn-secondary">
+        <i class="bi bi-arrow-left"></i> Back to List
+    </a>
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 340px; gap: 2rem; align-items: start;">
+    <!-- Rules Table -->
+    <div class="glass-panel">
+        <h3 style="font-size: 1.25rem; margin-bottom: 1rem;"><i class="bi bi-list-check" style="color: var(--secondary);"></i> Active Grading Rules</h3>
+        {% if rules %}
+        <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>Grade Name</th>
+                    <th>Min Marks Required</th>
+                    <th>Points Awarded</th>
+                    <th style="text-align: right; width: 80px;">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rules %}
+                <tr>
+                    <td>
+                        <strong style="color: var(--secondary); font-size: 1.1rem;">{{ r.grade_name }}</strong>
+                    </td>
+                    <td>
+                        <strong style="color: var(--text-main); font-size: 1.05rem;">&ge; {{ r.min_marks }}</strong>
+                    </td>
+                    <td>
+                        <span class="badge badge-success" style="font-size: 0.9rem; padding: 0.4rem 0.7rem;">{{ r.points }} pts</span>
+                    </td>
+                    <td style="text-align: right;">
+                        <form method="POST" style="display: inline;" onsubmit="return confirm('Delete this grading rule?');">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="delete">
+                            <input type="hidden" name="rule_id" value="{{ r.id }}">
+                            <button type="submit" class="btn btn-danger" style="padding: 0.35rem 0.5rem; font-size: 0.8rem;" title="Delete Rule">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        <p class="text-muted" style="text-align: center; padding: 3rem 0;">
+            <i class="bi bi-info-circle" style="font-size: 2rem; display: block; margin-bottom: 0.5rem;"></i>
+            No grading rules configured yet for this program.<br>
+            It currently uses the fallback rank-based points system.
+        </p>
+        {% endif %}
+    </div>
+
+    <!-- Add Rule Form -->
+    <div class="glass-panel">
+        <h3 style="font-size: 1.25rem; margin-bottom: 1.2rem;"><i class="bi bi-plus-circle" style="color: var(--primary);"></i> Add Grading Rule</h3>
+        <form method="POST">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="add">
+            
+            <div class="form-group">
+                <label for="grade_name">Grade Name</label>
+                <input type="text" id="grade_name" name="grade_name" placeholder="e.g. A Grade, A+, B, C" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="min_marks">Minimum Marks Threshold</label>
+                <input type="number" step="0.01" id="min_marks" name="min_marks" min="0" max="{{ program.max_marks }}" placeholder="e.g. 80" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="points">Points to Award</label>
+                <input type="number" id="points" name="points" min="0" placeholder="e.g. 5" required>
+            </div>
+            
+            <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 0.5rem;">
+                <i class="bi bi-plus-lg"></i> Add Rule
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}
