@@ -8,7 +8,7 @@ import os
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = config('SECRET_KEY')
+SECRET_KEY = config('SECRET_KEY', default='django-insecure-fallback-secret-key-for-render-deploy-festalchemy')
 
 DEBUG = config('DEBUG', default=False, cast=bool)
 
