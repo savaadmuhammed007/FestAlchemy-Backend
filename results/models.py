@@ -28,7 +28,9 @@ from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 
 @receiver(post_save, sender=Result)
-def result_saved(sender, instance, **kwargs):
+def result_saved(sender, instance, raw, **kwargs):
+    if raw:
+        return
     from .utils import recalculate_team_points
     recalculate_team_points()
 

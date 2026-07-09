@@ -5,7 +5,11 @@ Django settings for festalchemy project.
 from pathlib import Path
 from decouple import config
 import os
-import dj_database_url
+
+try:
+    import dj_database_url
+except ImportError:
+    dj_database_url = None
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -63,11 +67,17 @@ TEMPLATES = [
 WSGI_APPLICATION = 'festalchemy.wsgi.application'
 
 # Database
-DATABASES = {
-    'default': dj_database_url.config(
-        default='mysql://root:mohdsavaaD%40123$@localhost:3306/fest'
-    )
-}
+if dj_database_url and config("DATABASE_URL", default=None):
+    DATABASES = {
+        'default': dj_database_url.config()
+    }
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 # Password validation — all removed, any password is accepted
 AUTH_PASSWORD_VALIDATORS = []
