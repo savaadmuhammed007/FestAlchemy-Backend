@@ -5,6 +5,7 @@ Django settings for festalchemy project.
 from pathlib import Path
 from decouple import config
 import os
+import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -63,14 +64,9 @@ WSGI_APPLICATION = 'festalchemy.wsgi.application'
 
 # Database
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': config('DB_NAME', default='fest'),
-        'USER': config('DB_USER', default='root'),
-        'PASSWORD': config('DB_PASSWORD', default='mohdsavaaD@123$'),
-        'HOST': config('DB_HOST', default='localhost'),
-        'PORT': config('DB_PORT', default='3306'),
-    }
+    'default': dj_database_url.config(
+        default='mysql://root:mohdsavaaD%40123$@localhost:3306/fest'
+    )
 }
 
 # Password validation — all removed, any password is accepted
