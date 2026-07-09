@@ -18,8 +18,10 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from .db_check import db_check_view
 
 urlpatterns = [
+    path('db-check/', db_check_view, name='db_check'),
     path('admin/', admin.site.urls),
     path('api/', include('festalchemy.api_urls')),
     path('accounts/', include('accounts.urls')),
