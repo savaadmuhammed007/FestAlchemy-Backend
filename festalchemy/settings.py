@@ -67,15 +67,27 @@ TEMPLATES = [
 WSGI_APPLICATION = 'festalchemy.wsgi.application'
 
 # Database
-if dj_database_url and config("DATABASE_URL", default=None):
+DATABASE_URL = config(
+    'DATABASE_URL',
+    default='mysql://avnadmin:YOUR_AIVEN_PASSWORD_HERE@festalchemy-savaadmuhammed786-0b08.d.aivencloud.com:28632/defaultdb?ssl_mode=REQUIRED'
+)
+
+if dj_database_url:
     DATABASES = {
-        'default': dj_database_url.config()
+        'default': dj_database_url.config(default=DATABASE_URL)
     }
 else:
     DATABASES = {
         'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
+            'ENGINE': 'django.db.backends.mysql',
+            'NAME': 'defaultdb',
+            'USER': 'avnadmin',
+            'PASSWORD': 'YOUR_AIVEN_PASSWORD_HERE',
+            'HOST': 'festalchemy-savaadmuhammed786-0b08.d.aivencloud.com',
+            'PORT': '28632',
+            'OPTIONS': {
+                'ssl_mode': 'REQUIRED',
+            }
         }
     }
 
