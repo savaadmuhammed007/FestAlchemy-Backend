@@ -10,6 +10,7 @@ class FestSettings(models.Model):
     description = models.TextField(blank=True, help_text='Detailed description shown on the public home page')
     point_system = models.JSONField(default=dict, help_text='ex: {"1st": 5, "2nd": 3, "3rd": 1}')
     dates = models.JSONField(default=list, blank=True)
+    publish_team_standings = models.BooleanField(default=True, help_text="Toggle public visibility of overall team standings")
 
     def __str__(self):
         return f"{self.fest_name} {self.year}"

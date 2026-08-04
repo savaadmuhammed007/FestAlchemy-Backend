@@ -959,8 +959,12 @@ class PublicDashboardStatsAPIView(APIView):
         progs_data = ProgramSerializer(progs, many=True).data
         
         # Team points leaderboard
-        teampoints = TeamPoints.objects.select_related('team').order_by('-total_points')
-        teampoints_data = TeamPointsSerializer(teampoints, many=True).data
+        publish_standings = getattr(fest, 'publish_team_standings', True) if fest else True
+        if not publish_standings:
+            teampoints_data = []
+        else:
+            teampoints = TeamPoints.objects.select_related('team').order_by('-total_points')
+            teampoints_data = TeamPointsSerializer(teampoints, many=True).data
         
         # Individual Leaderboard — top 20 per category (only counting program__type='single')
         result_categories = (
