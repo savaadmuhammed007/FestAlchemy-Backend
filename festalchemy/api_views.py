@@ -137,6 +137,12 @@ class FestSettingsViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return FestSettings.objects.all()
 
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        if 'publish_team_standings' in self.request.data:
+            val = serializer.validated_data.get('publish_team_standings', instance.publish_team_standings)
+            FestSettings.objects.all().update(publish_team_standings=val)
+
 class StageViewSet(viewsets.ModelViewSet):
     queryset = Stage.objects.all()
     serializer_class = StageSerializer
@@ -950,6 +956,15 @@ class PublicDashboardStatsAPIView(APIView):
         fest = FestSettings.objects.first()
         fest_data = FestSettingsSerializer(fest).data if fest else None
         
+        # Global publish_team_standings check
+        if FestSettings.objects.filter(publish_team_standings=False).exists():
+            publish_standings = False
+        else:
+            publish_standings = True
+
+        if fest_data:
+            fest_data['publish_team_standings'] = publish_standings
+
         # Categories
         cats = Category.objects.all()
         cats_data = CategorySerializer(cats, many=True).data
@@ -959,7 +974,6 @@ class PublicDashboardStatsAPIView(APIView):
         progs_data = ProgramSerializer(progs, many=True).data
         
         # Team points leaderboard
-        publish_standings = getattr(fest, 'publish_team_standings', True) if fest else True
         if not publish_standings:
             teampoints_data = []
         else:
