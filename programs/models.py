@@ -11,6 +11,7 @@ class FestSettings(models.Model):
     point_system = models.JSONField(default=dict, help_text='ex: {"1st": 5, "2nd": 3, "3rd": 1}')
     dates = models.JSONField(default=list, blank=True)
     publish_team_standings = models.BooleanField(default=True, help_text="Toggle public visibility of overall team standings")
+    published_standings_limit = models.IntegerField(default=0, help_text="Limit public standings calculation to first N published programs. 0 for all.")
 
     def __str__(self):
         return f"{self.fest_name} {self.year}"

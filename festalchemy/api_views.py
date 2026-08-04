@@ -139,9 +139,13 @@ class FestSettingsViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         instance = serializer.save()
+        updates = {}
         if 'publish_team_standings' in self.request.data:
-            val = serializer.validated_data.get('publish_team_standings', instance.publish_team_standings)
-            FestSettings.objects.all().update(publish_team_standings=val)
+            updates['publish_team_standings'] = serializer.validated_data.get('publish_team_standings', instance.publish_team_standings)
+        if 'published_standings_limit' in self.request.data:
+            updates['published_standings_limit'] = serializer.validated_data.get('published_standings_limit', instance.published_standings_limit)
+        if updates:
+            FestSettings.objects.all().update(**updates)
 
 class StageViewSet(viewsets.ModelViewSet):
     queryset = Stage.objects.all()
@@ -974,8 +978,19 @@ class PublicDashboardStatsAPIView(APIView):
         progs_data = ProgramSerializer(progs, many=True).data
         
         # Team points leaderboard
+        limit = fest.published_standings_limit if fest and fest.published_standings_limit is not None else 0
+
         if not publish_standings:
             teampoints_data = []
+        elif limit > 0:
+            from results.utils import calculate_team_points_for_programs
+            published_prog_ids = list(
+                Program.objects.filter(results__published=True)
+                .distinct()
+                .order_by('id')[:limit]
+                .values_list('id', flat=True)
+            )
+            teampoints_data = calculate_team_points_for_programs(published_prog_ids)
         else:
             teampoints = TeamPoints.objects.select_related('team').order_by('-total_points')
             teampoints_data = TeamPointsSerializer(teampoints, many=True).data

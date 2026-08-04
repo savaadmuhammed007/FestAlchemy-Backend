@@ -177,3 +177,42 @@ def recalculate_team_points():
         tp.breakdown = breakdown
         tp.save()
 
+
+def calculate_team_points_for_programs(program_ids=None):
+    """Calculate team points leaderboard filtered by specific published program IDs."""
+    from participants.models import Team
+    from results.models import Result
+    from django.db.models import Sum
+
+    teams = Team.objects.all()
+    results_qs = Result.objects.filter(published=True)
+    if program_ids is not None:
+        results_qs = results_qs.filter(program_id__in=program_ids)
+
+    leaderboard = []
+    for team in teams:
+        team_results = results_qs.filter(member__team=team)
+        total = team_results.aggregate(total=Sum('points'))['total'] or 0.0
+        
+        breakdown = {}
+        for r in team_results:
+            prog_name = r.program.name
+            if prog_name not in breakdown:
+                breakdown[prog_name] = []
+            breakdown[prog_name].append({
+                'member': r.member.name,
+                'rank': r.rank,
+                'pts': r.points
+            })
+        
+        leaderboard.append({
+            'id': team.id,
+            'team': team.id,
+            'team_name': team.name,
+            'total_points': int(total),
+            'breakdown': breakdown
+        })
+    
+    leaderboard.sort(key=lambda x: x['total_points'], reverse=True)
+    return leaderboard
+
