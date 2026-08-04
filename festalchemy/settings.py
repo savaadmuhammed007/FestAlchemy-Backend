@@ -71,10 +71,15 @@ WSGI_APPLICATION = 'festalchemy.wsgi.application'
 DATABASE_URL = config('DATABASE_URL', default=None)
 
 if DATABASE_URL and dj_database_url:
+    # In Serverless environments (Vercel), conn_max_age MUST be 0 so connections close after each request.
+    # Additionally, Supabase Pooler requires port 6543 (Transaction Mode) for serverless to prevent max connection limits.
+    if '.pooler.supabase.' in DATABASE_URL and ':5432' in DATABASE_URL:
+        DATABASE_URL = DATABASE_URL.replace(':5432', ':6543')
+
     DATABASES = {
         'default': dj_database_url.parse(
             DATABASE_URL,
-            conn_max_age=600,
+            conn_max_age=0,
             ssl_require=True
         )
     }
