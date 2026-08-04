@@ -66,20 +66,52 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'festalchemy.wsgi.application'
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'defaultdb',
-        'USER': 'avnadmin',
-        'PASSWORD': config('DB_PASSWORD', default=''),
-        'HOST': 'festalchemy-savaadmuhammed786-0b08.d.aivencloud.com',
-        'PORT': '28632',
-        'OPTIONS': {
-            'ssl_mode': 'REQUIRED',
-            'connect_timeout': 5,
-        }
+DATABASE_URL = config('DATABASE_URL', default=None)
+
+if DATABASE_URL and dj_database_url:
+    DATABASES = {
+        'default': dj_database_url.parse(
+            DATABASE_URL,
+            conn_max_age=600,
+            ssl_require=True
+        )
     }
-}
+else:
+    DB_ENGINE = config('DB_ENGINE', default='django.db.backends.postgresql')
+    DB_HOST = config('DB_HOST', default='')
+    DB_NAME = config('DB_NAME', default='postgres')
+    DB_USER = config('DB_USER', default='postgres')
+    DB_PASSWORD = config('DB_PASSWORD', default='')
+    DB_PORT = config('DB_PORT', default='5432')
+
+    if DB_HOST:
+        db_config = {
+            'ENGINE': DB_ENGINE,
+            'NAME': DB_NAME,
+            'USER': DB_USER,
+            'PASSWORD': DB_PASSWORD,
+            'HOST': DB_HOST,
+            'PORT': DB_PORT,
+        }
+        if 'mysql' in DB_ENGINE:
+            db_config['OPTIONS'] = {
+                'ssl_mode': 'REQUIRED',
+                'connect_timeout': 5,
+            }
+        elif 'postgresql' in DB_ENGINE and DB_HOST not in ('localhost', '127.0.0.1'):
+            db_config['OPTIONS'] = {
+                'sslmode': 'require',
+            }
+        DATABASES = {'default': db_config}
+    else:
+        # Fallback to local SQLite if no DB_HOST or DATABASE_URL is set
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': BASE_DIR / 'db.sqlite3',
+            }
+        }
+
 
 # Password validation — all removed, any password is accepted
 AUTH_PASSWORD_VALIDATORS = []
