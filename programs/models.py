@@ -62,10 +62,11 @@ class Program(models.Model):
     @property
     def calculated_duration_minutes(self):
         if self.stage_type == 'offstage':
-            return self.duration
-        # onstage
+            return max(5, self.duration)
+        # onstage: if 0 members registered yet, default to base duration
         count = self.registered_members.count()
-        return self.duration * count
+        multiplier = max(1, count)
+        return max(5, self.duration * multiplier)
 
     @property
     def end_time(self):

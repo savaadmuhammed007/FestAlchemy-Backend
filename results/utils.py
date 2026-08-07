@@ -148,13 +148,17 @@ def recalculate_team_points():
     from participants.models import Team
     from results.models import TeamPoints, Result
     from django.db.models import Sum
+    from django.core.cache import cache
+
+    # Clear public stats cache on recalculation
+    cache.delete('public_dashboard_stats')
 
     # Reset all team points to 0
     TeamPoints.objects.all().update(total_points=0, breakdown={})
 
     for team in Team.objects.all():
-        # Get all published results for this team's members
-        published_results = Result.objects.filter(member__team=team, published=True)
+        # Get all published results for this team's members with select_related to avoid N+1 queries
+        published_results = Result.objects.filter(member__team=team, published=True).select_related('program', 'member')
         
         # Calculate total points
         total = published_results.aggregate(total=Sum('points'))['total'] or 0.0
@@ -185,7 +189,7 @@ def calculate_team_points_for_programs(program_ids=None):
     from django.db.models import Sum
 
     teams = Team.objects.all()
-    results_qs = Result.objects.filter(published=True)
+    results_qs = Result.objects.filter(published=True).select_related('program', 'member')
     if program_ids is not None:
         results_qs = results_qs.filter(program_id__in=program_ids)
 
@@ -215,4 +219,5 @@ def calculate_team_points_for_programs(program_ids=None):
     
     leaderboard.sort(key=lambda x: x['total_points'], reverse=True)
     return leaderboard
+
 

@@ -60,7 +60,8 @@ class ProgramSerializer(serializers.ModelSerializer):
 
         if schedule and venue:
             registered_count = self.instance.registered_members.count() if self.instance else 0
-            total_duration = duration if stage_type == 'offstage' else duration * registered_count
+            count_mult = max(1, registered_count)
+            total_duration = max(5, duration if stage_type == 'offstage' else duration * count_mult)
             start_time = schedule
             import datetime
             end_time = start_time + datetime.timedelta(minutes=total_duration)
@@ -72,8 +73,7 @@ class ProgramSerializer(serializers.ModelSerializer):
 
             for other in clashing_programs:
                 other_start = other.schedule
-                other_count = other.registered_members.count()
-                other_dur = other.duration if other.stage_type == 'offstage' else other.duration * other_count
+                other_dur = other.calculated_duration_minutes
                 other_end = other_start + datetime.timedelta(minutes=other_dur)
 
                 # Overlap condition: start_time < other_end and other_start < end_time

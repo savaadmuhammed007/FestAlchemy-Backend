@@ -5,11 +5,16 @@ from programs.serializers import CategorySerializer, ProgramSerializer
 
 class TeamSerializer(serializers.ModelSerializer):
     teamlead_username = serializers.ReadOnlyField(source='teamlead.username')
-    members_count = serializers.IntegerField(source='members.count', read_only=True)
+    members_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Team
         fields = ['id', 'name', 'teamlead', 'teamlead_username', 'members_count']
+
+    def get_members_count(self, obj):
+        if hasattr(obj, 'members_count'):
+            return obj.members_count
+        return obj.members.count()
 
 class MemberSerializer(serializers.ModelSerializer):
     team_name = serializers.ReadOnlyField(source='team.name')
@@ -24,6 +29,7 @@ class MemberSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['chest_no']
         extra_kwargs = {
+            'team': {'required': False, 'allow_null': True},
             'registered_programs': {'required': False}
         }
 

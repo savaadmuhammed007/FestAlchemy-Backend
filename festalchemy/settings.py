@@ -70,16 +70,18 @@ WSGI_APPLICATION = 'festalchemy.wsgi.application'
 
 DATABASE_URL = config('DATABASE_URL', default=None)
 
+conn_max_age_val = config('CONN_MAX_AGE', default=600, cast=int)
+
 if DATABASE_URL and dj_database_url:
-    # In Serverless environments (Vercel), conn_max_age MUST be 0 so connections close after each request.
-    # Additionally, Supabase Pooler requires port 6543 (Transaction Mode) for serverless to prevent max connection limits.
+    # In Serverless environments (Vercel), conn_max_age can be overridden via env CONN_MAX_AGE=0.
+    # Supabase Pooler requires port 6543 (Transaction Mode) for serverless to prevent max connection limits.
     if '.pooler.supabase.' in DATABASE_URL and ':5432' in DATABASE_URL:
         DATABASE_URL = DATABASE_URL.replace(':5432', ':6543')
 
     DATABASES = {
         'default': dj_database_url.parse(
             DATABASE_URL,
-            conn_max_age=0,
+            conn_max_age=conn_max_age_val,
             ssl_require=True
         )
     }
@@ -99,6 +101,7 @@ else:
             'PASSWORD': DB_PASSWORD,
             'HOST': DB_HOST,
             'PORT': DB_PORT,
+            'CONN_MAX_AGE': conn_max_age_val,
         }
         if 'mysql' in DB_ENGINE:
             db_config['OPTIONS'] = {
@@ -119,13 +122,20 @@ else:
             }
         }
 
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'festalchemy-cache',
+    }
+}
+
 
 # Password validation — all removed, any password is accepted
 AUTH_PASSWORD_VALIDATORS = []
 
 # Internationalization
 LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'UTC'
+TIME_ZONE = config('TIME_ZONE', default='Asia/Kolkata')
 USE_I18N = True
 USE_TZ = True
 

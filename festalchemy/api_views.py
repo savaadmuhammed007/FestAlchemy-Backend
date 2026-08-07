@@ -1,4 +1,4 @@
-from rest_framework import viewsets, status, permissions
+from rest_framework import viewsets, status, permissions, serializers
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.decorators import action
@@ -8,8 +8,13 @@ from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404
 from django.db import transaction
 from django.db.models import Count, Q, F, Sum
+from django.core.cache import cache
 import json
 import random
+
+def invalidate_public_stats_cache():
+    cache.delete('public_dashboard_stats')
+
 
 # Models
 from accounts.models import UserProfile
@@ -146,6 +151,7 @@ class FestSettingsViewSet(viewsets.ModelViewSet):
             updates['published_standings_limit'] = serializer.validated_data.get('published_standings_limit', instance.published_standings_limit)
         if updates:
             FestSettings.objects.all().update(**updates)
+        invalidate_public_stats_cache()
 
 class StageViewSet(viewsets.ModelViewSet):
     queryset = Stage.objects.all()
@@ -202,6 +208,7 @@ class ProgramViewSet(viewsets.ModelViewSet):
         reschedule_all = request.data.get('reschedule_all', False)
         target_day = request.data.get('target_day', 'all')
         program_ids = request.data.get('program_ids', [])
+        program_stages = request.data.get('program_stages', {})
 
         # Parse start and end times
         try:
@@ -217,8 +224,9 @@ class ProgramViewSet(viewsets.ModelViewSet):
 
         fest_dates = fest.dates
 
-        # Get onstage and offstage stages
+        # Get stages
         stages = list(Stage.objects.all())
+        all_stage_names = [stg.name for stg in stages]
         onstage_stages = [stg.name for stg in stages if stg.type == 'onstage']
         offstage_stages = [stg.name for stg in stages if stg.type == 'offstage']
 
@@ -226,37 +234,43 @@ class ProgramViewSet(viewsets.ModelViewSet):
             onstage_stages = ['Stage 1']
         if not offstage_stages:
             offstage_stages = ['Offstage Stage']
+        if not all_stage_names:
+            all_stage_names = list(dict.fromkeys(onstage_stages + offstage_stages))
 
         # Get programs
-        programs_qs = Program.objects.all().order_by('category__name', 'name')
+        programs_qs = Program.objects.all()
         if program_ids:
-            programs_qs = programs_qs.filter(id__in=program_ids)
+            programs_dict = {p.id: p for p in programs_qs.filter(id__in=program_ids)}
+            # Preserve exact priority order of program_ids provided by client
+            programs_list = [programs_dict[pid] for pid in program_ids if pid in programs_dict]
         elif not reschedule_all:
-            programs_qs = programs_qs.filter(schedule=None)
+            programs_list = list(programs_qs.filter(schedule=None).order_by('category__name', 'name'))
+        else:
+            programs_list = list(programs_qs.order_by('category__name', 'name'))
 
-        programs_list = list(programs_qs)
         if not programs_list:
             return Response({'message': 'No programs to schedule.'})
 
-        onstage_programs = [p for p in programs_list if p.stage_type == 'onstage']
-        offstage_programs = [p for p in programs_list if p.stage_type == 'offstage']
+        # Distribute programs to stages while respecting custom program_stages mapping
+        stage_programs_map = {name: [] for name in all_stage_names}
+        onstage_rr_idx = 0
+        offstage_rr_idx = 0
 
-        # Distribute onstage programs to onstage stages round-robin
-        onstage_stage_programs = {name: [] for name in onstage_stages}
-        for idx, p in enumerate(onstage_programs):
-            s_name = onstage_stages[idx % len(onstage_stages)]
-            onstage_stage_programs[s_name].append(p)
+        for p in programs_list:
+            pid_str = str(p.id)
+            custom_stage = program_stages.get(pid_str) or program_stages.get(p.id)
+            if custom_stage and custom_stage in stage_programs_map:
+                stage_programs_map[custom_stage].append(p)
+            elif p.stage_type == 'offstage':
+                s_name = offstage_stages[offstage_rr_idx % len(offstage_stages)]
+                offstage_rr_idx += 1
+                stage_programs_map[s_name].append(p)
+            else:
+                s_name = onstage_stages[onstage_rr_idx % len(onstage_stages)]
+                onstage_rr_idx += 1
+                stage_programs_map[s_name].append(p)
 
-        # Distribute offstage programs to offstage stages round-robin
-        offstage_stage_programs = {name: [] for name in offstage_stages}
-        for idx, p in enumerate(offstage_programs):
-            s_name = offstage_stages[idx % len(offstage_stages)]
-            offstage_stage_programs[s_name].append(p)
-
-        # Merge distributions
-        all_stage_programs = {}
-        all_stage_programs.update(onstage_stage_programs)
-        all_stage_programs.update(offstage_stage_programs)
+        all_stage_programs = stage_programs_map
 
         import datetime
         from django.utils import timezone
@@ -277,14 +291,12 @@ class ProgramViewSet(viewsets.ModelViewSet):
             def get_datetime_cursor(day_idx, hour, minute):
                 date_str = fest_dates[day_idx]
                 dt = datetime.datetime.strptime(f"{date_str} {hour:02d}:{minute:02d}", "%Y-%m-%d %H:%M")
-                return timezone.make_aware(dt)
+                return timezone.make_aware(dt, timezone.get_current_timezone())
 
             current_time = get_datetime_cursor(current_day_idx, start_h, start_m)
 
             for p in progs:
-                reg_count = p.registered_members.count()
-                p_duration = p.duration if p.stage_type == 'offstage' else p.duration * reg_count
-                p_duration = max(5, p_duration)
+                p_duration = p.calculated_duration_minutes
 
                 day_end_time = get_datetime_cursor(current_day_idx, end_h, end_m)
                 
@@ -367,9 +379,12 @@ class ProgramViewSet(viewsets.ModelViewSet):
         return Response({'status': 'deleted'})
 
 class TeamViewSet(viewsets.ModelViewSet):
-    queryset = Team.objects.all()
+    queryset = Team.objects.annotate(members_count=Count('members')).select_related('teamlead').all()
     serializer_class = TeamSerializer
     permission_classes = [ReadOnlyOrAdmin]
+
+    def get_queryset(self):
+        return Team.objects.annotate(members_count=Count('members')).select_related('teamlead').all()
 
     @action(detail=False, methods=['post'], permission_classes=[IsAdminRole])
     def register_team_lead(self, request):
@@ -411,7 +426,7 @@ class TeamViewSet(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 class MemberViewSet(viewsets.ModelViewSet):
-    queryset = Member.objects.all()
+    queryset = Member.objects.select_related('team', 'category').prefetch_related('registered_programs').all()
     serializer_class = MemberSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -419,18 +434,17 @@ class MemberViewSet(viewsets.ModelViewSet):
         user = self.request.user
         role = user.userprofile.role if hasattr(user, 'userprofile') else 'user'
         
+        qs = Member.objects.select_related('team', 'category').prefetch_related('registered_programs').all()
         if role == 'teamlead':
             # Team leads can only see/manage members of their own team
             team = Team.objects.filter(teamlead=user).first()
-            if not team and user.userprofile.team:
+            if not team and hasattr(user, 'userprofile') and user.userprofile.team:
                 team = user.userprofile.team
             if team:
-                return Member.objects.filter(team=team)
+                return qs.filter(team=team)
             return Member.objects.none()
         
         # Admins, Judges, Public can see all members
-        qs = Member.objects.all()
-        
         team_id = self.request.query_params.get('team')
         category_id = self.request.query_params.get('category')
         if team_id:
@@ -444,12 +458,14 @@ class MemberViewSet(viewsets.ModelViewSet):
         role = user.userprofile.role if hasattr(user, 'userprofile') else 'user'
         if role == 'teamlead':
             team = Team.objects.filter(teamlead=user).first()
-            if not team and user.userprofile.team:
+            if not team and hasattr(user, 'userprofile') and user.userprofile.team:
                 team = user.userprofile.team
             if not team:
-                raise serializers.ValidationError("No team assigned to this team lead.")
+                raise serializers.ValidationError({'error': "No team assigned to this team lead. Please contact Admin."})
             serializer.save(team=team)
         else:
+            if 'team' not in serializer.validated_data or not serializer.validated_data['team']:
+                raise serializers.ValidationError({'team': ["Team is required."]})
             serializer.save()
 
     @action(detail=False, methods=['get'])
@@ -492,7 +508,7 @@ class MemberViewSet(viewsets.ModelViewSet):
         return Response(data)
 
 class MarksheetViewSet(viewsets.ModelViewSet):
-    queryset = Marksheet.objects.all()
+    queryset = Marksheet.objects.select_related('program', 'judge', 'member', 'member__team').all()
     serializer_class = MarksheetSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -500,16 +516,16 @@ class MarksheetViewSet(viewsets.ModelViewSet):
         user = self.request.user
         role = user.userprofile.role if hasattr(user, 'userprofile') else 'user'
         
+        qs = Marksheet.objects.select_related('program', 'judge', 'member', 'member__team').all()
         if role == 'judge':
             # Judges can only see marksheets assigned to them
-            qs = Marksheet.objects.filter(judge=user)
+            qs = qs.filter(judge=user)
             program_id = self.request.query_params.get('program')
             if program_id:
                 qs = qs.filter(program_id=program_id)
             return qs
         elif role == 'admin':
             # Admin can see all
-            qs = Marksheet.objects.all()
             program_id = self.request.query_params.get('program')
             if program_id:
                 qs = qs.filter(program_id=program_id)
@@ -551,12 +567,12 @@ class MarksheetViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 class ResultViewSet(viewsets.ModelViewSet):
-    queryset = Result.objects.all()
+    queryset = Result.objects.select_related('program', 'member', 'member__team', 'program__category').all()
     serializer_class = ResultSerializer
     permission_classes = [ReadOnlyOrAdmin]
 
     def get_queryset(self):
-        qs = Result.objects.all().order_by('rank')
+        qs = Result.objects.select_related('program', 'member', 'member__team', 'program__category').all().order_by('rank')
         program_id = self.request.query_params.get('program')
         published_only = self.request.query_params.get('published_only')
         
@@ -907,21 +923,17 @@ class AdminDashboardStatsAPIView(APIView):
         # Stages count (actual defined stages)
         stages_count = Stage.objects.count()
 
-        # Participants by Team
-        participants_by_team = []
-        for t in Team.objects.all():
-            participants_by_team.append({
-                'team_name': t.name,
-                'member_count': t.members.count()
-            })
+        # Participants by Team (ORM aggregation)
+        participants_by_team = [
+            {'team_name': item['name'], 'member_count': item['member_count']}
+            for item in Team.objects.annotate(member_count=Count('members')).values('name', 'member_count')
+        ]
 
-        # Participants by Category
-        participants_by_category = []
-        for c in Category.objects.all():
-            participants_by_category.append({
-                'category_name': c.name,
-                'member_count': c.members.count()
-            })
+        # Participants by Category (ORM aggregation)
+        participants_by_category = [
+            {'category_name': item['name'], 'member_count': item['member_count']}
+            for item in Category.objects.annotate(member_count=Count('members')).values('name', 'member_count')
+        ]
 
         # Team Leaderboard
         team_leaderboard = []
@@ -956,15 +968,16 @@ class PublicDashboardStatsAPIView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
+        cached_data = cache.get('public_dashboard_stats')
+        if cached_data:
+            return Response(cached_data)
+
         # Fest Settings
         fest = FestSettings.objects.first()
         fest_data = FestSettingsSerializer(fest).data if fest else None
         
         # Global publish_team_standings check
-        if FestSettings.objects.filter(publish_team_standings=False).exists():
-            publish_standings = False
-        else:
-            publish_standings = True
+        publish_standings = not FestSettings.objects.filter(publish_team_standings=False).exists()
 
         if fest_data:
             fest_data['publish_team_standings'] = publish_standings
@@ -973,8 +986,8 @@ class PublicDashboardStatsAPIView(APIView):
         cats = Category.objects.all()
         cats_data = CategorySerializer(cats, many=True).data
         
-        # Schedule
-        progs = Program.objects.all().order_by('schedule')
+        # Schedule (with select_related to avoid N+1 queries)
+        progs = Program.objects.select_related('category').all().order_by('schedule')
         progs_data = ProgramSerializer(progs, many=True).data
         
         # Team points leaderboard
@@ -1048,28 +1061,63 @@ class PublicDashboardStatsAPIView(APIView):
             })
 
         # Programs with results
-        published_program_ids = Result.objects.filter(published=True).values_list('program_id', flat=True).distinct()
-        progs_with_results = Program.objects.filter(id__in=published_program_ids).order_by('-schedule')
-        progs_with_results_data = [{'id': p.id, 'name': p.name, 'category_name': p.category.name} for p in progs_with_results]
+        published_program_ids = list(Result.objects.filter(published=True).values_list('program_id', flat=True).distinct())
+        progs_with_results = Program.objects.filter(id__in=published_program_ids).select_related('category').order_by('-schedule')
+        progs_with_results_data = [{'id': p.id, 'name': p.name, 'category_name': p.category.name if p.category else ''} for p in progs_with_results]
 
-        return Response({
+        # Recent results for top 3 published programs (top 3 ranks each) for home page spotlight
+        recent_results = []
+        recent_prog_ids = published_program_ids[:3]
+        if recent_prog_ids:
+            top_results = Result.objects.filter(
+                published=True, program_id__in=recent_prog_ids, rank__lte=3
+            ).select_related('program', 'member', 'member__team', 'program__category').order_by('program_id', 'rank')
+            recent_results = ResultSerializer(top_results, many=True).data
+
+        # Summary counts
+        participants_count = Member.objects.count()
+        teams_count = Team.objects.count()
+        categories_count = cats.count()
+        programs_count = progs.count()
+        fest_dates = fest.dates if (fest and fest.dates) else []
+        if isinstance(fest_dates, list) and len(fest_dates) > 0:
+            days_count = len(fest_dates)
+        else:
+            distinct_days = progs.exclude(schedule__isnull=True).values_list('schedule__date', flat=True).distinct()
+            days_count = distinct_days.count() if distinct_days.count() > 0 else 1
+
+        response_data = {
             'fest_settings': fest_data,
             'categories': cats_data,
             'schedule': progs_data,
             'leaderboard': teampoints_data,
             'individual_leaderboard': individual_data,
-            'programs_with_results': progs_with_results_data
-        })
+            'programs_with_results': progs_with_results_data,
+            'recent_results': recent_results,
+            'stats': {
+                'participants': participants_count,
+                'teams': teams_count,
+                'categories': categories_count,
+                'programs': programs_count,
+                'days': days_count
+            }
+        }
+
+        cache.set('public_dashboard_stats', response_data, 60)
+        return Response(response_data)
 
 # ────────────────────────────────────────────────────────
 #  REPORTS APIS
 # ────────────────────────────────────────────────────────
 
 class AdminReportsAPIView(APIView):
-    permission_classes = [IsAdminRole]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         report_type = request.query_params.get('type', 'dashboard')
+        user_role = getattr(getattr(request.user, 'userprofile', None), 'role', 'user')
+        if report_type == 'marksheets' and user_role != 'admin':
+            return Response({'error': 'Admin permission required.'}, status=status.HTTP_403_FORBIDDEN)
         
         if report_type == 'results':
             program_id = request.query_params.get('program')
@@ -1146,14 +1194,16 @@ class AdminReportsAPIView(APIView):
         elif report_type == 'schedule':
             category_id = request.query_params.get('category')
             venue = request.query_params.get('venue')
+            include_unscheduled = request.query_params.get('include_unscheduled', 'true')
             programs = Program.objects.select_related('category').all().order_by('schedule', 'venue', 'name')
             if category_id:
                 programs = programs.filter(category_id=category_id)
             if venue:
                 programs = programs.filter(venue__icontains=venue)
             
-            # Exclude unscheduled events from the printed schedule report
-            programs = programs.exclude(schedule=None)
+            if include_unscheduled == 'false':
+                programs = programs.exclude(schedule=None)
+
             serializer = ProgramSerializer(programs, many=True)
             
             # Fetch fest settings to retrieve configured dates
