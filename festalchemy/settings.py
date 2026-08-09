@@ -68,9 +68,10 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'festalchemy.wsgi.application'
 
-DATABASE_URL = config('DATABASE_URL', default=None)
+DEFAULT_SUPABASE_URL = 'postgresql://postgres.xqstrrlpmbmfozfgweuj:mohdsavaaD%40123%24@aws-0-ap-southeast-2.pooler.supabase.com:6543/postgres'
+DATABASE_URL = config('DATABASE_URL', default=DEFAULT_SUPABASE_URL)
 
-conn_max_age_val = config('CONN_MAX_AGE', default=600, cast=int)
+conn_max_age_val = config('CONN_MAX_AGE', default=60, cast=int)
 
 if DATABASE_URL and dj_database_url:
     # In Serverless environments (Vercel), conn_max_age can be overridden via env CONN_MAX_AGE=0.
