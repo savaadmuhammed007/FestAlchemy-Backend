@@ -153,6 +153,91 @@ class FestSettingsViewSet(viewsets.ModelViewSet):
             FestSettings.objects.all().update(**updates)
         invalidate_public_stats_cache()
 
+    @action(detail=False, methods=['post'], url_path='reset-data', permission_classes=[IsAdminRole])
+    def reset_data(self, request):
+        reset_programs = request.data.get('reset_programs', False)
+        reset_members = request.data.get('reset_members', False)
+        reset_teams = request.data.get('reset_teams', False)
+        reset_results = request.data.get('reset_results', False)
+        reset_categories = request.data.get('reset_categories', False)
+        reset_stages = request.data.get('reset_stages', False)
+        reset_judges = request.data.get('reset_judges', False)
+
+        if not any([reset_programs, reset_members, reset_teams, reset_results, reset_categories, reset_stages, reset_judges]):
+            return Response({'error': 'No reset options were selected.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        deleted_counts = {}
+
+        with transaction.atomic():
+            if reset_categories:
+                reset_programs = True
+                reset_members = True
+
+            # 1. Reset Results & Marksheets & Calling Lists & Team Points
+            if reset_results or reset_programs or reset_members or reset_teams:
+                res_cnt = Result.objects.count()
+                ms_cnt = Marksheet.objects.count()
+                cl_cnt = CallingList.objects.count()
+                tp_cnt = TeamPoints.objects.count()
+
+                Result.objects.all().delete()
+                Marksheet.objects.all().delete()
+                CallingList.objects.all().delete()
+                TeamPoints.objects.all().delete()
+
+                deleted_counts['results'] = res_cnt
+                deleted_counts['marksheets'] = ms_cnt
+                deleted_counts['calling_lists'] = cl_cnt
+                deleted_counts['team_points'] = tp_cnt
+
+            # 2. Reset Members
+            if reset_members or reset_teams:
+                mem_cnt = Member.objects.count()
+                Member.objects.all().delete()
+                deleted_counts['members'] = mem_cnt
+
+            # 3. Reset Programs
+            if reset_programs:
+                prog_cnt = Program.objects.count()
+                ProgramGradeSetting.objects.all().delete()
+                PosterTemplate.objects.all().delete()
+                Program.objects.all().delete()
+                deleted_counts['programs'] = prog_cnt
+
+            # 4. Reset Teams
+            if reset_teams:
+                team_cnt = Team.objects.count()
+                UserProfile.objects.filter(role='teamlead').update(team=None)
+                Team.objects.all().delete()
+                deleted_counts['teams'] = team_cnt
+
+            # 5. Reset Categories
+            if reset_categories:
+                cat_cnt = Category.objects.count()
+                Category.objects.all().delete()
+                Category.objects.create(name='General', chest_prefix=900)
+                deleted_counts['categories'] = cat_cnt
+
+            # 6. Reset Stages
+            if reset_stages:
+                stage_cnt = Stage.objects.count()
+                Stage.objects.all().delete()
+                deleted_counts['stages'] = stage_cnt
+
+            # 7. Reset Judges
+            if reset_judges:
+                judge_users = User.objects.filter(userprofile__role='judge')
+                judge_cnt = judge_users.count()
+                judge_users.delete()
+                deleted_counts['judges'] = judge_cnt
+
+        invalidate_public_stats_cache()
+
+        return Response({
+            'message': 'Selected fest data reset successfully.',
+            'deleted_counts': deleted_counts
+        }, status=status.HTTP_200_OK)
+
 class StageViewSet(viewsets.ModelViewSet):
     queryset = Stage.objects.all()
     serializer_class = StageSerializer
