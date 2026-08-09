@@ -64,7 +64,10 @@ class Program(models.Model):
         if self.stage_type == 'offstage':
             return max(5, self.duration)
         # onstage: if 0 members registered yet, default to base duration
-        count = self.registered_members.count()
+        if '_prefetched_objects_cache' in self.__dict__ and 'registered_members' in self._prefetched_objects_cache:
+            count = len(self.registered_members.all())
+        else:
+            count = self.registered_members.count()
         multiplier = max(1, count)
         return max(5, self.duration * multiplier)
 

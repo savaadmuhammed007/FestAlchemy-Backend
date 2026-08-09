@@ -32,7 +32,7 @@ class UserBriefSerializer(serializers.ModelSerializer):
 class ProgramSerializer(serializers.ModelSerializer):
     category_name = serializers.ReadOnlyField(source='category.name')
     judges_details = UserBriefSerializer(source='judges', many=True, read_only=True)
-    registered_members_count = serializers.IntegerField(source='registered_members.count', read_only=True)
+    registered_members_count = serializers.SerializerMethodField(read_only=True)
     calculated_duration_minutes = serializers.ReadOnlyField()
     end_time = serializers.ReadOnlyField()
     has_results = serializers.SerializerMethodField(read_only=True)
@@ -87,17 +87,35 @@ class ProgramSerializer(serializers.ModelSerializer):
 
         return attrs
 
+    def get_registered_members_count(self, obj):
+        if '_prefetched_objects_cache' in obj.__dict__ and 'registered_members' in obj._prefetched_objects_cache:
+            return len(obj.registered_members.all())
+        return obj.registered_members.count()
+
     def get_has_results(self, obj):
+        if '_prefetched_objects_cache' in obj.__dict__ and 'results' in obj._prefetched_objects_cache:
+            return len(obj.results.all()) > 0
         return obj.results.exists()
 
     def get_is_published(self, obj):
+        if '_prefetched_objects_cache' in obj.__dict__ and 'results' in obj._prefetched_objects_cache:
+            return any(r.published for r in obj.results.all())
         return obj.results.filter(published=True).exists()
 
     def get_lot_completed(self, obj):
-        reg_count = obj.registered_members.count()
+        if '_prefetched_objects_cache' in obj.__dict__ and 'registered_members' in obj._prefetched_objects_cache:
+            reg_count = len(obj.registered_members.all())
+        else:
+            reg_count = obj.registered_members.count()
+
         if reg_count == 0:
             return False
-        called_count = obj.calling_lists.filter(status='called').count()
+
+        if '_prefetched_objects_cache' in obj.__dict__ and 'calling_lists' in obj._prefetched_objects_cache:
+            called_count = sum(1 for c in obj.calling_lists.all() if c.status == 'called')
+        else:
+            called_count = obj.calling_lists.filter(status='called').count()
+
         return called_count >= reg_count
 
 class PosterTemplateSerializer(serializers.ModelSerializer):

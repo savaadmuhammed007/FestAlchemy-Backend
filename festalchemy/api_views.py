@@ -255,7 +255,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
             max_prefix = Category.objects.all().aggregate(Max('chest_prefix'))['chest_prefix__max']
             prefix = (max_prefix + 100) if max_prefix is not None else 900
             Category.objects.create(name='General', chest_prefix=prefix)
-        return Category.objects.all().order_by('id')
+        return Category.objects.annotate(programs_count=Count('programs')).order_by('id')
 
 class ProgramGradeSettingViewSet(viewsets.ModelViewSet):
     queryset = ProgramGradeSetting.objects.all()
@@ -275,7 +275,7 @@ class ProgramViewSet(viewsets.ModelViewSet):
     permission_classes = [ReadOnlyOrAdmin]
 
     def get_queryset(self):
-        qs = Program.objects.all().order_by('schedule')
+        qs = Program.objects.select_related('category').prefetch_related('judges', 'results', 'calling_lists', 'registered_members').order_by('schedule')
         user = self.request.user
         judge_only = self.request.query_params.get('judge_only')
         if judge_only == 'true' and user.is_authenticated:
@@ -1068,11 +1068,11 @@ class PublicDashboardStatsAPIView(APIView):
             fest_data['publish_team_standings'] = publish_standings
 
         # Categories
-        cats = Category.objects.all()
+        cats = Category.objects.annotate(programs_count=Count('programs')).all()
         cats_data = CategorySerializer(cats, many=True).data
         
-        # Schedule (with select_related to avoid N+1 queries)
-        progs = Program.objects.select_related('category').all().order_by('schedule')
+        # Schedule (with select_related and prefetch_related to avoid N+1 queries)
+        progs = Program.objects.select_related('category').prefetch_related('judges', 'results', 'calling_lists', 'registered_members').all().order_by('schedule')
         progs_data = ProgramSerializer(progs, many=True).data
         
         # Team points leaderboard

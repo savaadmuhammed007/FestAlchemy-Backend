@@ -6,10 +6,10 @@ class Result(models.Model):
     program = models.ForeignKey(Program, on_delete=models.CASCADE, related_name='results')
     member = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='results')
     total_marks = models.FloatField()
-    rank = models.IntegerField(blank=True, null=True)
+    rank = models.IntegerField(blank=True, null=True, db_index=True)
     points = models.FloatField(default=0)
     judge_code = models.CharField(max_length=10, blank=True)
-    published = models.BooleanField(default=False)
+    published = models.BooleanField(default=False, db_index=True)
     grade = models.CharField(max_length=50, blank=True, null=True)
 
     def __str__(self):
