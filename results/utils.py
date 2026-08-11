@@ -144,42 +144,49 @@ def generate_winner_poster(template_path, program, winners, fest_name="FestAlche
 
 
 def recalculate_team_points():
-    """Recalculate total points and breakdown for all teams based on published results."""
+    """Recalculate total points and breakdown for all teams based on published results in a single batch query."""
     from participants.models import Team
     from results.models import TeamPoints, Result
-    from django.db.models import Sum
     from django.core.cache import cache
 
     # Clear public stats cache on recalculation
     cache.delete('public_dashboard_stats')
 
-    # Reset all team points to 0
-    TeamPoints.objects.all().update(total_points=0, breakdown={})
+    teams = list(Team.objects.all())
+    if not teams:
+        return
 
-    for team in Team.objects.all():
-        # Get all published results for this team's members with select_related to avoid N+1 queries
-        published_results = Result.objects.filter(member__team=team, published=True).select_related('program', 'member')
-        
-        # Calculate total points
-        total = published_results.aggregate(total=Sum('points'))['total'] or 0.0
-        
-        # Build breakdown dictionary
-        breakdown = {}
-        for r in published_results:
+    # Map team_id -> {'total': 0.0, 'breakdown': {}}
+    team_data = {t.id: {'total': 0.0, 'breakdown': {}} for t in teams}
+
+    # Single DB query for all published results with required relations
+    published_results = Result.objects.filter(published=True).select_related('program', 'member', 'member__team')
+
+    for r in published_results:
+        if not r.member or not r.member.team_id:
+            continue
+        t_id = r.member.team_id
+        if t_id in team_data:
+            team_data[t_id]['total'] += (r.points or 0.0)
             prog_name = r.program.name
-            if prog_name not in breakdown:
-                breakdown[prog_name] = []
-            breakdown[prog_name].append({
+            if prog_name not in team_data[t_id]['breakdown']:
+                team_data[t_id]['breakdown'][prog_name] = []
+            team_data[t_id]['breakdown'][prog_name].append({
                 'member': r.member.name,
                 'rank': r.rank,
                 'pts': r.points
             })
-        
-        # Update or create the TeamPoints record
-        tp, created = TeamPoints.objects.get_or_create(team=team)
-        tp.total_points = int(total)
-        tp.breakdown = breakdown
-        tp.save()
+
+    # Update or create TeamPoints for all teams
+    for team in teams:
+        data = team_data[team.id]
+        TeamPoints.objects.update_or_create(
+            team=team,
+            defaults={
+                'total_points': int(data['total']),
+                'breakdown': data['breakdown']
+            }
+        )
 
 
 def calculate_team_points_for_programs(program_ids=None):
