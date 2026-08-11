@@ -945,17 +945,19 @@ class LotCallingAPIView(APIView):
         spin_all = request.data.get('spin_all', False)
 
         if spin_all:
-            callings = CallingList.objects.filter(program=program)
+            callings = list(CallingList.objects.filter(program=program))
             judges = list(program.judges.all())
-            count = 0
+            count = len(callings)
+
             with transaction.atomic():
-                for calling in callings:
-                    if calling.status != 'called':
-                        calling.status = 'called'
-                        calling.save()
-                    for judge in judges:
-                        Marksheet.objects.get_or_create(program=program, judge=judge, member=calling.member)
-                    count += 1
+                CallingList.objects.filter(program=program).exclude(status='called').update(status='called')
+                if judges:
+                    marksheets = [
+                        Marksheet(program=program, judge=judge, member_id=c.member_id)
+                        for c in callings
+                        for judge in judges
+                    ]
+                    Marksheet.objects.bulk_create(marksheets, ignore_conflicts=True)
 
             return Response({
                 'status': 'ok',
@@ -971,12 +973,14 @@ class LotCallingAPIView(APIView):
         
         with transaction.atomic():
             calling, _ = CallingList.objects.get_or_create(program=program, member=member)
-            calling.status = 'called'
-            calling.save()
+            if calling.status != 'called':
+                calling.status = 'called'
+                calling.save()
             
-            # Create marksheets for all assigned judges
-            for judge in program.judges.all():
-                Marksheet.objects.get_or_create(program=program, judge=judge, member=member)
+            judges = list(program.judges.all())
+            if judges:
+                marksheets = [Marksheet(program=program, judge=j, member=member) for j in judges]
+                Marksheet.objects.bulk_create(marksheets, ignore_conflicts=True)
                 
         judge_code = calling.calling_code.split('-')[1] if '-' in calling.calling_code else calling.calling_code
         return Response({
