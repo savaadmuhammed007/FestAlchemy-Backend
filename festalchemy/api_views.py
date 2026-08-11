@@ -942,6 +942,27 @@ class LotCallingAPIView(APIView):
             return Response({'error': 'Cannot spin lot for a program with finalized results.'}, status=status.HTTP_400_BAD_REQUEST)
             
         CallingList.pregenerate_for_program(program)
+        spin_all = request.data.get('spin_all', False)
+
+        if spin_all:
+            callings = CallingList.objects.filter(program=program)
+            judges = list(program.judges.all())
+            count = 0
+            with transaction.atomic():
+                for calling in callings:
+                    if calling.status != 'called':
+                        calling.status = 'called'
+                        calling.save()
+                    for judge in judges:
+                        Marksheet.objects.get_or_create(program=program, judge=judge, member=calling.member)
+                    count += 1
+
+            return Response({
+                'status': 'ok',
+                'message': f'Successfully assigned lot codes for all {count} participants.',
+                'count': count
+            })
+
         member_id = request.data.get('member_id')
         if not member_id:
             return Response({'error': 'member_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
