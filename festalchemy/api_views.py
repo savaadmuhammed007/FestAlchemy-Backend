@@ -709,10 +709,10 @@ class ResultViewSet(viewsets.ModelViewSet):
         with transaction.atomic():
             current_rank = 0
             prev_marks = None
-            for idx, r in enumerate(results, start=1):
+            for r in results:
                 rounded_marks = round(r.total_marks, 2)
                 if prev_marks is None or rounded_marks != prev_marks:
-                    current_rank = idx
+                    current_rank += 1
                 prev_marks = rounded_marks
                 r.rank = current_rank
                 
@@ -791,14 +791,14 @@ class ResultViewSet(viewsets.ModelViewSet):
         point_map = fest.point_system if fest else {}
         grade_rules = list(program.grade_settings.all())
 
-        # Pre-compute entries, grades, and base points with tie-rank handling
+        # Pre-compute entries, grades, and base points with dense tie-rank handling
         computed_entries = []
         current_rank = 0
         prev_marks = None
-        for idx, (member_id, avg_marks) in enumerate(ranked, start=1):
+        for member_id, avg_marks in ranked:
             rounded_marks = round(avg_marks, 2)
             if prev_marks is None or rounded_marks != prev_marks:
-                current_rank = idx
+                current_rank += 1
             prev_marks = rounded_marks
 
             scaled = (avg_marks / program.max_marks) * 100 if program.max_marks > 0 else avg_marks
