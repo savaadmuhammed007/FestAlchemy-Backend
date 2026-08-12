@@ -707,8 +707,14 @@ class ResultViewSet(viewsets.ModelViewSet):
                 grade_counts[r.grade] = grade_counts.get(r.grade, 0) + 1
                 
         with transaction.atomic():
-            for rank_idx, r in enumerate(results, start=1):
-                r.rank = rank_idx
+            current_rank = 0
+            prev_marks = None
+            for idx, r in enumerate(results, start=1):
+                rounded_marks = round(r.total_marks, 2)
+                if prev_marks is None or rounded_marks != prev_marks:
+                    current_rank = idx
+                prev_marks = rounded_marks
+                r.rank = current_rank
                 
                 pts = 0
                 if r.grade:
@@ -732,9 +738,9 @@ class ResultViewSet(viewsets.ModelViewSet):
                         elif r.grade == "D": pts = 2
                 
                 if r.grade and grade_counts.get(r.grade, 0) > 1:
-                    if rank_idx == 1:
+                    if r.rank == 1:
                         pts += 3
-                    elif rank_idx == 2:
+                    elif r.rank == 2:
                         pts += 1
                         
                 r.points = pts
@@ -785,9 +791,16 @@ class ResultViewSet(viewsets.ModelViewSet):
         point_map = fest.point_system if fest else {}
         grade_rules = list(program.grade_settings.all())
 
-        # Pre-compute entries, grades, and base points
+        # Pre-compute entries, grades, and base points with tie-rank handling
         computed_entries = []
-        for rank_idx, (member_id, avg_marks) in enumerate(ranked, start=1):
+        current_rank = 0
+        prev_marks = None
+        for idx, (member_id, avg_marks) in enumerate(ranked, start=1):
+            rounded_marks = round(avg_marks, 2)
+            if prev_marks is None or rounded_marks != prev_marks:
+                current_rank = idx
+            prev_marks = rounded_marks
+
             scaled = (avg_marks / program.max_marks) * 100 if program.max_marks > 0 else avg_marks
             
             grade_name = None
@@ -827,7 +840,7 @@ class ResultViewSet(viewsets.ModelViewSet):
             computed_entries.append({
                 'member_id': member_id,
                 'avg_marks': avg_marks,
-                'rank': rank_idx,
+                'rank': current_rank,
                 'grade_name': grade_name,
                 'base_pts': pts
             })
