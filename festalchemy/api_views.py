@@ -1180,19 +1180,31 @@ class PublicDashboardStatsAPIView(APIView):
                 } for item in cat_leaderboard],
             })
 
-        # Programs with results
-        published_program_ids = list(Result.objects.filter(published=True).values_list('program_id', flat=True).distinct())
-        progs_with_results = Program.objects.filter(id__in=published_program_ids).select_related('category').order_by('-schedule')
-        progs_with_results_data = [{'id': p.id, 'name': p.name, 'category_name': p.category.name if p.category else ''} for p in progs_with_results]
+        # Programs with results ordered by latest published first
+        published_results_qs = Result.objects.filter(published=True).order_by('-id')
+        seen_prog_ids = set()
+        recent_prog_ids = []
+        for r in published_results_qs:
+            if r.program_id not in seen_prog_ids:
+                seen_prog_ids.add(r.program_id)
+                recent_prog_ids.append(r.program_id)
 
-        # Recent results for top 3 published programs (top 3 ranks each) for home page spotlight
+        published_program_ids = recent_prog_ids
+        progs_with_results = Program.objects.filter(id__in=published_program_ids).select_related('category')
+        prog_by_id = {p.id: p for p in progs_with_results}
+        ordered_progs = [prog_by_id[pid] for pid in published_program_ids if pid in prog_by_id]
+        progs_with_results_data = [{'id': p.id, 'name': p.name, 'category_name': p.category.name if p.category else ''} for p in ordered_progs]
+
+        # Recent results for top 3 published programs (top 3 ranks each) for home page spotlight (latest published first)
         recent_results = []
-        recent_prog_ids = published_program_ids[:3]
-        if recent_prog_ids:
+        spotlight_prog_ids = published_program_ids[:3]
+        if spotlight_prog_ids:
             top_results = Result.objects.filter(
-                published=True, program_id__in=recent_prog_ids, rank__lte=3
-            ).select_related('program', 'member', 'member__team', 'program__category').order_by('program_id', 'rank')
-            recent_results = ResultSerializer(top_results, many=True).data
+                published=True, program_id__in=spotlight_prog_ids, rank__lte=3
+            ).select_related('program', 'member', 'member__team', 'program__category')
+            top_results_list = list(top_results)
+            top_results_list.sort(key=lambda r: (spotlight_prog_ids.index(r.program_id), r.rank))
+            recent_results = ResultSerializer(top_results_list, many=True).data
 
         # Summary counts
         participants_count = Member.objects.count()
@@ -1310,6 +1322,62 @@ class AdminReportsAPIView(APIView):
             team_points = TeamPoints.objects.select_related('team').order_by('-total_points')
             serializer = TeamPointsSerializer(team_points, many=True)
             return Response({'teampoints': serializer.data})
+
+        elif report_type == 'performers':
+            category_id = request.query_params.get('category')
+            result_categories = (
+                Result.objects.filter(published=True, program__type='single')
+                .values('member__category__id', 'member__category__name')
+                .distinct()
+            )
+            if category_id:
+                result_categories = result_categories.filter(member__category__id=category_id)
+
+            individual_data = []
+            for cat in result_categories:
+                cat_id = cat['member__category__id']
+                cat_name = cat['member__category__name']
+
+                cat_leaderboard = (
+                    Result.objects.filter(published=True, member__category__id=cat_id, program__type='single')
+                    .values('member__id', 'member__name', 'member__team__name', 'member__chest_no')
+                    .annotate(total=Sum('points'), events=Count('id'))
+                    .order_by('-total')[:20]
+                )
+
+                cat_member_ids = [item['member__id'] for item in cat_leaderboard]
+                per_prog = (
+                    Result.objects.filter(published=True, member__id__in=cat_member_ids, program__type='single')
+                    .values('member__id', 'program__id', 'program__name', 'points', 'rank')
+                    .order_by('member__id', 'program__name')
+                )
+                prog_map = {}
+                for r in per_prog:
+                    mid = r['member__id']
+                    if mid not in prog_map:
+                        prog_map[mid] = []
+                    prog_map[mid].append({
+                        'program_id': r['program__id'],
+                        'program_name': r['program__name'],
+                        'points': r['points'],
+                        'rank': r['rank'],
+                    })
+
+                individual_data.append({
+                    'category_id': cat_id,
+                    'category_name': cat_name,
+                    'performers': [{
+                        'member_id': item['member__id'],
+                        'member_name': item['member__name'],
+                        'chest_number': item['member__chest_no'],
+                        'team_name': item['member__team__name'],
+                        'total_points': item['total'],
+                        'events_count': item['events'],
+                        'program_breakdown': prog_map.get(item['member__id'], []),
+                    } for item in cat_leaderboard],
+                })
+
+            return Response({'individual_leaderboard': individual_data})
 
         elif report_type == 'schedule':
             category_id = request.query_params.get('category')
