@@ -38,6 +38,7 @@ class ProgramSerializer(serializers.ModelSerializer):
     has_results = serializers.SerializerMethodField(read_only=True)
     is_published = serializers.SerializerMethodField(read_only=True)
     lot_completed = serializers.SerializerMethodField(read_only=True)
+    has_marksheets = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Program
@@ -46,7 +47,7 @@ class ProgramSerializer(serializers.ModelSerializer):
             'duration', 'calculated_duration_minutes', 'end_time', 'participant_limit',
             'point_weightage_1st', 'point_weightage_2nd', 'point_weightage_3rd', 'max_marks', 
             'schedule', 'venue', 'judges', 'judges_details', 'registered_members_count',
-            'has_results', 'is_published', 'lot_completed', 'fest'
+            'has_results', 'is_published', 'lot_completed', 'has_marksheets', 'fest'
         ]
         extra_kwargs = {
             'judges': {'required': False}
@@ -101,6 +102,11 @@ class ProgramSerializer(serializers.ModelSerializer):
         if '_prefetched_objects_cache' in obj.__dict__ and 'results' in obj._prefetched_objects_cache:
             return any(r.published for r in obj.results.all())
         return obj.results.filter(published=True).exists()
+
+    def get_has_marksheets(self, obj):
+        if '_prefetched_objects_cache' in obj.__dict__ and 'marksheets' in obj._prefetched_objects_cache:
+            return len(obj.marksheets.all()) > 0
+        return obj.marksheets.exists()
 
     def get_lot_completed(self, obj):
         if '_prefetched_objects_cache' in obj.__dict__ and 'registered_members' in obj._prefetched_objects_cache:

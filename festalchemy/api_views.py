@@ -275,7 +275,7 @@ class ProgramViewSet(viewsets.ModelViewSet):
     permission_classes = [ReadOnlyOrAdmin]
 
     def get_queryset(self):
-        qs = Program.objects.select_related('category').prefetch_related('judges', 'results', 'calling_lists', 'registered_members').order_by('schedule')
+        qs = Program.objects.select_related('category').prefetch_related('judges', 'results', 'calling_lists', 'registered_members', 'marksheets').order_by('schedule')
         user = self.request.user
         judge_only = self.request.query_params.get('judge_only')
         if judge_only == 'true' and user.is_authenticated:
@@ -738,7 +738,7 @@ class ResultViewSet(viewsets.ModelViewSet):
                         pts += 1
                         
                 r.points = pts
-                r.save()
+            Result.objects.bulk_update(results, ['rank', 'grade', 'points'])
                 
         from results.utils import recalculate_team_points
         recalculate_team_points()
@@ -751,10 +751,16 @@ class ResultViewSet(viewsets.ModelViewSet):
 
         program = get_object_or_404(Program, pk=program_id)
 
+        # Check if program was already published prior to re-computing
+        was_published = Result.objects.filter(program=program, published=True).exists()
+
         sheets = Marksheet.objects.filter(program=program, submitted=True)
+        if not sheets.exists():
+            # Fall back to marksheets with evaluation marks if submitted flag wasn't set
+            sheets = Marksheet.objects.filter(program=program).exclude(marks={}).exclude(marks=None)
 
         if not sheets.exists():
-            return Response({'error': 'No submitted marksheets found for this program.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'No marksheets with evaluation data found for this program.'}, status=status.HTTP_400_BAD_REQUEST)
 
         # Aggregate marks per member
         from collections import defaultdict
@@ -833,37 +839,41 @@ class ResultViewSet(viewsets.ModelViewSet):
             if g:
                 grade_counts[g] = grade_counts.get(g, 0) + 1
 
+        # Bulk fetch calling codes mapping to avoid N+1 queries
+        calling_map = {}
+        for c in CallingList.objects.filter(program=program):
+            jcod = c.calling_code.split('-')[1] if '-' in c.calling_code else c.calling_code
+            calling_map[c.member_id] = jcod
+
+        new_results = []
+        for entry in computed_entries:
+            member_id = entry['member_id']
+            avg_marks = entry['avg_marks']
+            rank_idx = entry['rank']
+            grade_name = entry['grade_name']
+            pts = entry['base_pts']
+
+            # Position bonus points (only if they have a grade and that grade is shared with others)
+            if grade_name and grade_counts.get(grade_name, 0) > 1:
+                if rank_idx == 1:
+                    pts += 3
+                elif rank_idx == 2:
+                    pts += 1
+
+            new_results.append(Result(
+                program=program,
+                member_id=member_id,
+                total_marks=round(avg_marks, 2),
+                rank=rank_idx,
+                points=pts,
+                grade=grade_name,
+                judge_code=calling_map.get(member_id, ""),
+                published=was_published,
+            ))
+
         with transaction.atomic():
             Result.objects.filter(program=program).delete()
-            for entry in computed_entries:
-                member_id = entry['member_id']
-                avg_marks = entry['avg_marks']
-                rank_idx = entry['rank']
-                grade_name = entry['grade_name']
-                pts = entry['base_pts']
-
-                # Position bonus points (only if they have a grade and that grade is shared with others)
-                if grade_name and grade_counts.get(grade_name, 0) > 1:
-                    if rank_idx == 1:
-                        pts += 3
-                    elif rank_idx == 2:
-                        pts += 1
-
-                calling = CallingList.objects.filter(program=program, member_id=member_id).first()
-                jcod = ""
-                if calling:
-                    jcod = calling.calling_code.split('-')[1] if '-' in calling.calling_code else calling.calling_code
-
-                Result.objects.create(
-                    program=program,
-                    member_id=member_id,
-                    total_marks=round(avg_marks, 2),
-                    rank=rank_idx,
-                    points=pts,
-                    grade=grade_name,
-                    judge_code=jcod,
-                    published=False,
-                )
+            Result.objects.bulk_create(new_results)
 
         from results.utils import recalculate_team_points
         recalculate_team_points()

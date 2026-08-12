@@ -33,11 +33,18 @@ def home(request):
 
 def program_results(request, program_id):
     program = get_object_or_404(Program, id=program_id)
-    qs = Result.objects.filter(program=program, published=True).order_by('rank')
+    qs = Result.objects.filter(program=program, published=True).select_related('member').order_by('rank')
     
     results_list = list(qs)
+    all_sheets = Marksheet.objects.filter(program=program).select_related('judge')
+    sheets_by_member = {}
+    for s in all_sheets:
+        if s.member_id not in sheets_by_member:
+            sheets_by_member[s.member_id] = []
+        sheets_by_member[s.member_id].append(s)
+
     for r in results_list:
-        sheets = Marksheet.objects.filter(program=program, member=r.member).select_related('judge')
+        sheets = sheets_by_member.get(r.member_id, [])
         r.judges_scores = []
         for s in sheets:
             raw = s.marks
