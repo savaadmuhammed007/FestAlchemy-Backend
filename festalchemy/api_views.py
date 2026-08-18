@@ -18,22 +18,30 @@ def invalidate_public_stats_cache():
 
 # Models
 from accounts.models import UserProfile
-from programs.models import FestSettings, Category, Program, PosterTemplate, GlobalPosterTemplate, ProgramGradeSetting, Stage
+from programs.models import FestSettings, Category, Program, PosterTemplate, GlobalPosterTemplate, ProgramGradeSetting, Stage, ActivityLog
 from participants.models import Team, Member, CallingList
 from judging.models import Marksheet
 from results.models import Result, TeamPoints
+from programs.activity_utils import log_activity, backfill_activity_logs
 
 # Serializers
 from accounts.serializers import UserSerializer, UserProfileSerializer
-from programs.serializers import FestSettingsSerializer, CategorySerializer, ProgramSerializer, ProgramGradeSettingSerializer, PosterTemplateSerializer, GlobalPosterTemplateSerializer, StageSerializer
+from programs.serializers import (
+    FestSettingsSerializer, CategorySerializer, ProgramSerializer,
+    ProgramGradeSettingSerializer, PosterTemplateSerializer,
+    GlobalPosterTemplateSerializer, StageSerializer, ActivityLogSerializer
+)
 from participants.serializers import TeamSerializer, MemberSerializer, CallingListSerializer
 from judging.serializers import MarksheetSerializer
 from results.serializers import ResultSerializer, TeamPointsSerializer
 
-# Permissions
 class IsAdminRole(permissions.BasePermission):
     def has_permission(self, request, view):
-        return request.user.is_authenticated and hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'admin'
+        if not request.user or not request.user.is_authenticated:
+            return False
+        if request.user.is_superuser or request.user.is_staff:
+            return True
+        return hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'admin'
 
 class IsJudgeRole(permissions.BasePermission):
     def has_permission(self, request, view):
@@ -309,7 +317,31 @@ class ProgramViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        serializer.save()
+        instance = serializer.save()
+        log_activity(
+            action_type='program_created',
+            title=f"Event Created: {instance.name}",
+            description=f"New competition event '{instance.name}' ({instance.category.name if instance.category else 'General'}) was created.",
+            user=self.request.user,
+            target_model='Program',
+            target_id=instance.id,
+            metadata={'program_id': instance.id, 'program_name': instance.name}
+        )
+
+    def perform_destroy(self, instance):
+        prog_id = instance.id
+        prog_name = instance.name
+        user = self.request.user
+        instance.delete()
+        log_activity(
+            action_type='program_deleted',
+            title=f"Event Deleted: {prog_name}",
+            description=f"Competition event '{prog_name}' was deleted.",
+            user=user,
+            target_model='Program',
+            target_id=prog_id,
+            metadata={'program_id': prog_id, 'program_name': prog_name}
+        )
 
     @action(detail=False, methods=['post'], permission_classes=[IsAdminRole])
     def auto_schedule(self, request):
@@ -497,6 +529,33 @@ class TeamViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return Team.objects.annotate(members_count=Count('members')).select_related('teamlead').all()
 
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        log_activity(
+            action_type='team_created',
+            title=f"Team Created: {instance.name}",
+            description=f"New participating team '{instance.name}' was created.",
+            user=self.request.user,
+            target_model='Team',
+            target_id=instance.id,
+            metadata={'team_id': instance.id, 'team_name': instance.name}
+        )
+
+    def perform_destroy(self, instance):
+        team_id = instance.id
+        team_name = instance.name
+        user = self.request.user
+        instance.delete()
+        log_activity(
+            action_type='team_deleted',
+            title=f"Team Deleted: {team_name}",
+            description=f"Participating team '{team_name}' was deleted.",
+            user=user,
+            target_model='Team',
+            target_id=team_id,
+            metadata={'team_id': team_id, 'team_name': team_name}
+        )
+
     @action(detail=False, methods=['post'], permission_classes=[IsAdminRole])
     def register_team_lead(self, request):
         from django.contrib.auth.models import User
@@ -532,6 +591,16 @@ class TeamViewSet(viewsets.ModelViewSet):
             profile = new_user.userprofile
             profile.team = team
             profile.save()
+
+        log_activity(
+            action_type='team_created',
+            title=f"Team Created: {team.name}",
+            description=f"New team '{team.name}' registered with lead {username}.",
+            user=request.user,
+            target_model='Team',
+            target_id=team.id,
+            metadata={'team_id': team.id, 'team_name': team.name, 'username': username}
+        )
 
         serializer = TeamSerializer(team)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -573,11 +642,77 @@ class MemberViewSet(viewsets.ModelViewSet):
                 team = user.userprofile.team
             if not team:
                 raise serializers.ValidationError({'error': "No team assigned to this team lead. Please contact Admin."})
-            serializer.save(team=team)
+            instance = serializer.save(team=team)
         else:
             if 'team' not in serializer.validated_data or not serializer.validated_data['team']:
                 raise serializers.ValidationError({'team': ["Team is required."]})
-            serializer.save()
+            instance = serializer.save()
+
+        team_name = instance.team.name if instance.team else 'No Team'
+        cat_name = instance.category.name if instance.category else 'General'
+        log_activity(
+            action_type='member_registered',
+            title='Participant Registered',
+            description=f"{instance.name} registered under {team_name} ({cat_name}, Chest #{instance.chest_no}).",
+            user=user,
+            target_model='Member',
+            target_id=instance.id,
+            metadata={
+                'member_id': instance.id,
+                'member_name': instance.name,
+                'chest_no': instance.chest_no,
+                'team_name': team_name,
+                'category_name': cat_name
+            }
+        )
+
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        user = self.request.user
+        team_name = instance.team.name if instance.team else 'No Team'
+        prog_names = list(instance.registered_programs.values_list('name', flat=True))
+        prog_str = ", ".join(prog_names) if prog_names else "None"
+        log_activity(
+            action_type='member_assigned',
+            title=f"Events Assigned: {instance.name}",
+            description=f"Updated registered events for {instance.name} (Chest #{instance.chest_no}, {team_name}): {prog_str}",
+            user=user,
+            target_model='Member',
+            target_id=instance.id,
+            metadata={
+                'member_id': instance.id,
+                'member_name': instance.name,
+                'chest_no': instance.chest_no,
+                'team_name': team_name,
+                'programs': prog_names
+            }
+        )
+
+    def perform_destroy(self, instance):
+        member_id = instance.id
+        member_name = instance.name
+        chest_no = instance.chest_no
+        team_name = instance.team.name if instance.team else 'No Team'
+        category_name = instance.category.name if instance.category else ''
+        user = self.request.user
+        
+        instance.delete()
+
+        log_activity(
+            action_type='member_deleted',
+            title=f"Participant Deleted: {member_name}",
+            description=f"Participant {member_name} (Chest #{chest_no}, {team_name}) was deleted.",
+            user=user,
+            target_model='Member',
+            target_id=member_id,
+            metadata={
+                'member_id': member_id,
+                'member_name': member_name,
+                'chest_no': chest_no,
+                'team_name': team_name,
+                'category_name': category_name
+            }
+        )
 
     @action(detail=False, methods=['get'])
     def team_programs_availability(self, request):
@@ -672,6 +807,21 @@ class MarksheetViewSet(viewsets.ModelViewSet):
         marksheet.marks = {'total': score_val}
         if submit:
             marksheet.submitted = True
+            log_activity(
+                action_type='marks_submitted',
+                title='Evaluation Submitted',
+                description=f"Judge {request.user.username} submitted {score_val} pts for Chest #{marksheet.member.chest_no} ({marksheet.member.name}) in {marksheet.program.name}.",
+                user=request.user,
+                target_model='Marksheet',
+                target_id=marksheet.id,
+                metadata={
+                    'program_id': marksheet.program.id,
+                    'program_name': marksheet.program.name,
+                    'chest_no': marksheet.member.chest_no,
+                    'member_name': marksheet.member.name,
+                    'score': score_val
+                }
+            )
         marksheet.save()
 
         serializer = MarksheetSerializer(marksheet)
@@ -937,9 +1087,35 @@ class ResultViewSet(viewsets.ModelViewSet):
         if is_published:
             results.update(published=False)
             message = f"Results for '{program.name}' hidden."
+            log_activity(
+                action_type='result_unassigned',
+                title=f"Results Hidden: {program.name}",
+                description=f"Results for '{program.name}' have been unpublished/hidden by admin.",
+                user=request.user,
+                target_model='Program',
+                target_id=program.id,
+                metadata={'program_id': program.id, 'program_name': program.name}
+            )
         else:
             results.update(published=True)
             message = f"Results for '{program.name}' published."
+            rank1 = results.filter(rank=1).select_related('member', 'member__team').first()
+            winner_str = f"1st: {rank1.member.name} ({rank1.member.team.name})" if rank1 else "Results published"
+            log_activity(
+                action_type='result_published',
+                title=f"Results Published: {program.name}",
+                description=f"Results finalized and published for {program.name}. {winner_str}.",
+                user=request.user,
+                target_model='Program',
+                target_id=program.id,
+                metadata={
+                    'program_id': program.id,
+                    'program_name': program.name,
+                    'category_name': program.category.name if program.category else '',
+                    'winner_name': rank1.member.name if rank1 else '',
+                    'winner_team': rank1.member.team.name if rank1 else '',
+                }
+            )
 
         from results.utils import recalculate_team_points
         recalculate_team_points()
@@ -1008,6 +1184,16 @@ class LotCallingAPIView(APIView):
                     ]
                     Marksheet.objects.bulk_create(marksheets, ignore_conflicts=True)
 
+            log_activity(
+                action_type='lot_called',
+                title=f"All Lots Assigned: {program.name}",
+                description=f"Assigned lot calling codes for all {count} participants in {program.name}.",
+                user=request.user,
+                target_model='Program',
+                target_id=program.id,
+                metadata={'program_id': program.id, 'program_name': program.name, 'count': count}
+            )
+
             return Response({
                 'status': 'ok',
                 'message': f'Successfully assigned lot codes for all {count} participants.',
@@ -1032,6 +1218,23 @@ class LotCallingAPIView(APIView):
                 Marksheet.objects.bulk_create(marksheets, ignore_conflicts=True)
                 
         judge_code = calling.calling_code.split('-')[1] if '-' in calling.calling_code else calling.calling_code
+        
+        log_activity(
+            action_type='lot_called',
+            title=f"Lot Assigned: {program.name}",
+            description=f"Lot code {judge_code} drawn for {member.name} (Chest #{member.chest_no}) in {program.name}.",
+            user=request.user,
+            target_model='CallingList',
+            target_id=calling.id,
+            metadata={
+                'program_id': program.id,
+                'program_name': program.name,
+                'chest_no': member.chest_no,
+                'member_name': member.name,
+                'calling_code': judge_code
+            }
+        )
+
         return Response({
             'status': 'ok',
             'judge_code': judge_code,
@@ -1052,12 +1255,114 @@ class LotRespinAPIView(APIView):
             
             from results.utils import recalculate_team_points
             recalculate_team_points()
+
+        log_activity(
+            action_type='lot_respun',
+            title=f"Lots Reset: {program.name}",
+            description=f"Lot calling codes reset for all participants in {program.name}.",
+            user=request.user,
+            target_model='Program',
+            target_id=program.id,
+            metadata={'program_id': program.id, 'program_name': program.name}
+        )
             
         return Response({'message': f'Lot codes reset for all participants in program {program.name}'})
 
 # ────────────────────────────────────────────────────────
+#  ACTIVITY LOG VIEWSET
+# ────────────────────────────────────────────────────────
+
+class ActivityLogViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = ActivityLogSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        if not ActivityLog.objects.exists():
+            backfill_activity_logs()
+
+        qs = ActivityLog.objects.all().order_by('-created_at')
+
+        cat = self.request.query_params.get('category')
+        act_type = self.request.query_params.get('type')
+        search = self.request.query_params.get('search')
+
+        if act_type:
+            types = [t.strip() for t in act_type.split(',') if t.strip()]
+            qs = qs.filter(action_type__in=types)
+        elif cat:
+            if cat == 'results':
+                qs = qs.filter(action_type__in=['result_published', 'result_unassigned'])
+            elif cat == 'judging':
+                qs = qs.filter(action_type__in=['marks_submitted', 'judge_assigned'])
+            elif cat == 'calling':
+                qs = qs.filter(action_type__in=['lot_called', 'lot_respun'])
+            elif cat == 'members':
+                qs = qs.filter(action_type__in=['member_registered', 'member_assigned', 'member_deleted', 'team_created', 'team_deleted'])
+            elif cat == 'system':
+                qs = qs.filter(action_type__in=['program_created', 'program_scheduled', 'program_deleted', 'stage_created', 'stage_deleted', 'user_created', 'user_deleted', 'settings_updated'])
+
+        if search:
+            qs = qs.filter(
+                Q(title__icontains=search) |
+                Q(description__icontains=search) |
+                Q(user_name__icontains=search)
+            )
+
+        limit = self.request.query_params.get('limit')
+        if limit and limit.isdigit():
+            qs = qs[:int(limit)]
+
+        return qs
+
+    @action(detail=False, methods=['post'], permission_classes=[IsAdminRole])
+    def clear_logs(self, request):
+        ActivityLog.objects.all().delete()
+        return Response({'message': 'All activity logs cleared.', 'count': 0})
+
+# ────────────────────────────────────────────────────────
 #  ADMIN & PUBLIC DASHBOARD STATS APIS
 # ────────────────────────────────────────────────────────
+
+class AdminBootstrapAPIView(APIView):
+    """
+    Superfast unified bootstrap endpoint for the Admin Panel.
+    Loads all core setup collections in parallel in a single DB round-trip.
+    """
+    permission_classes = [IsAdminRole]
+
+    def get(self, request):
+        fest = FestSettings.objects.first()
+        fest_data = FestSettingsSerializer(fest).data if fest else None
+
+        categories = Category.objects.annotate(programs_count=Count('programs')).all().order_by('id')
+        cats_data = CategorySerializer(categories, many=True).data
+
+        programs = Program.objects.select_related('category', 'fest').prefetch_related(
+            'judges', 'results', 'calling_lists', 'registered_members', 'marksheets'
+        ).all().order_by('schedule', 'name')
+        progs_data = ProgramSerializer(programs, many=True).data
+
+        teams = Team.objects.annotate(members_count=Count('members')).select_related('teamlead').all().order_by('name')
+        teams_data = TeamSerializer(teams, many=True).data
+
+        judges = User.objects.filter(userprofile__role='judge').order_by('username')
+        judges_data = UserSerializer(judges, many=True).data
+
+        members = Member.objects.select_related('team', 'category').prefetch_related('registered_programs').all().order_by('team__name', 'chest_no')
+        members_data = MemberSerializer(members, many=True).data
+
+        stages = Stage.objects.all().order_by('name')
+        stages_data = StageSerializer(stages, many=True).data
+
+        return Response({
+            'fest_settings': fest_data,
+            'categories': cats_data,
+            'programs': progs_data,
+            'teams': teams_data,
+            'judges': judges_data,
+            'members': members_data,
+            'stages': stages_data,
+        })
 
 class AdminDashboardStatsAPIView(APIView):
     permission_classes = [IsAdminRole]
@@ -1105,6 +1410,15 @@ class AdminDashboardStatsAPIView(APIView):
         marksheets_submitted = Marksheet.objects.filter(submitted=True).count()
         marksheets_pending = Marksheet.objects.filter(submitted=False).count()
 
+        # Auto-backfill if empty and get recent activities
+        if not ActivityLog.objects.exists():
+            backfill_activity_logs()
+
+        recent_activities = ActivityLogSerializer(
+            ActivityLog.objects.all().order_by('-created_at')[:10],
+            many=True
+        ).data
+
         return Response({
             'results_count': results_count,
             'members_count': members_count,
@@ -1120,7 +1434,8 @@ class AdminDashboardStatsAPIView(APIView):
             'participants_by_category': participants_by_category,
             'team_leaderboard': team_leaderboard,
             'marksheets_submitted': marksheets_submitted,
-            'marksheets_pending': marksheets_pending
+            'marksheets_pending': marksheets_pending,
+            'recent_activities': recent_activities
         })
 
 class PublicDashboardStatsAPIView(APIView):
@@ -1330,7 +1645,7 @@ class AdminReportsAPIView(APIView):
         elif report_type == 'members':
             team_id = request.query_params.get('team')
             category_id = request.query_params.get('category')
-            members = Member.objects.select_related('team', 'category').all().order_by('team__name', 'chest_no')
+            members = Member.objects.select_related('team', 'category').prefetch_related('registered_programs').all().order_by('team__name', 'chest_no')
             if team_id:
                 members = members.filter(team_id=team_id)
             if category_id:
@@ -1523,6 +1838,22 @@ class UserManagementViewSet(viewsets.ModelViewSet):
 
         serializer = UserSerializer(user)
         return Response(serializer.data)
+
+    def perform_destroy(self, instance):
+        user_id = instance.id
+        username = instance.username
+        role = instance.userprofile.role if hasattr(instance, 'userprofile') else 'user'
+        user = self.request.user
+        instance.delete()
+        log_activity(
+            action_type='user_deleted',
+            title=f"User Deleted: {username}",
+            description=f"User account '{username}' (Role: {role}) was deleted.",
+            user=user,
+            target_model='User',
+            target_id=user_id,
+            metadata={'user_id': user_id, 'username': username, 'role': role}
+        )
 
 # ────────────────────────────────────────────────────────
 #  POSTER TEMPLATE & RENDERING

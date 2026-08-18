@@ -19,21 +19,26 @@ class TeamSerializer(serializers.ModelSerializer):
 class MemberSerializer(serializers.ModelSerializer):
     team_name = serializers.ReadOnlyField(source='team.name')
     category_name = serializers.ReadOnlyField(source='category.name')
+    chest_number = serializers.ReadOnlyField(source='chest_no')
     registered_programs_details = serializers.SerializerMethodField(read_only=True)
+    programs = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Member
         fields = [
             'id', 'name', 'team', 'team_name', 'category', 'category_name',
-            'chest_no', 'registered_programs', 'registered_programs_details'
+            'chest_no', 'chest_number', 'registered_programs', 'registered_programs_details', 'programs'
         ]
-        read_only_fields = ['chest_no']
+        read_only_fields = ['chest_no', 'chest_number']
         extra_kwargs = {
             'team': {'required': False, 'allow_null': True},
             'registered_programs': {'required': False}
         }
 
     def get_registered_programs_details(self, obj):
+        return [{'id': p.id, 'name': p.name, 'type': p.type, 'stage_type': p.stage_type} for p in obj.registered_programs.all()]
+
+    def get_programs(self, obj):
         return [{'id': p.id, 'name': p.name, 'type': p.type, 'stage_type': p.stage_type} for p in obj.registered_programs.all()]
 
 class CallingListSerializer(serializers.ModelSerializer):

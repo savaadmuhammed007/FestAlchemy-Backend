@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import FestSettings, Category, Program, PosterTemplate, GlobalPosterTemplate, ProgramGradeSetting, Stage
+from django.utils import timezone
+from .models import FestSettings, Category, Program, PosterTemplate, GlobalPosterTemplate, ProgramGradeSetting, Stage, ActivityLog
 
 class FestSettingsSerializer(serializers.ModelSerializer):
     class Meta:
@@ -140,3 +141,33 @@ class StageSerializer(serializers.ModelSerializer):
     class Meta:
         model = Stage
         fields = '__all__'
+
+class ActivityLogSerializer(serializers.ModelSerializer):
+    time_ago = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ActivityLog
+        fields = [
+            'id', 'fest', 'user', 'user_name', 'action_type',
+            'title', 'description', 'target_model', 'target_id',
+            'metadata', 'created_at', 'time_ago'
+        ]
+
+    def get_time_ago(self, obj):
+        if not obj.created_at:
+            return ""
+        diff = timezone.now() - obj.created_at
+        seconds = int(diff.total_seconds())
+        if seconds < 10:
+            return "Just now"
+        elif seconds < 60:
+            return f"{seconds}s ago"
+        elif seconds < 3600:
+            return f"{seconds // 60}m ago"
+        elif seconds < 86400:
+            return f"{seconds // 3600}h ago"
+        elif seconds < 604800:
+            return f"{seconds // 86400}d ago"
+        else:
+            return obj.created_at.strftime("%b %d, %Y")
+

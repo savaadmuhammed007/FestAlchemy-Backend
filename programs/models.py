@@ -137,3 +137,47 @@ class Stage(models.Model):
 
     class Meta:
         unique_together = ('name', 'fest')
+
+
+class ActivityLog(models.Model):
+    ACTION_CHOICES = [
+        ('result_published', 'Result Published'),
+        ('result_unassigned', 'Result Updated'),
+        ('marks_submitted', 'Marksheet Submitted'),
+        ('lot_called', 'Lot Called'),
+        ('lot_respun', 'Lot Respun'),
+        ('member_registered', 'Member Registered'),
+        ('member_assigned', 'Member Assigned'),
+        ('member_deleted', 'Member Deleted'),
+        ('program_created', 'Program Created'),
+        ('program_scheduled', 'Program Scheduled'),
+        ('program_deleted', 'Program Deleted'),
+        ('stage_created', 'Stage Created'),
+        ('stage_deleted', 'Stage Deleted'),
+        ('team_created', 'Team Created'),
+        ('team_deleted', 'Team Deleted'),
+        ('judge_assigned', 'Judge Assigned'),
+        ('user_created', 'User Created'),
+        ('user_deleted', 'User Deleted'),
+        ('settings_updated', 'Fest Settings Updated'),
+    ]
+
+    fest = models.ForeignKey(FestSettings, on_delete=models.CASCADE, null=True, blank=True, related_name='activity_logs')
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='activity_logs')
+    user_name = models.CharField(max_length=150, blank=True)
+    action_type = models.CharField(max_length=50, choices=ACTION_CHOICES, db_index=True)
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    target_model = models.CharField(max_length=50, blank=True)
+    target_id = models.IntegerField(null=True, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Activity Log"
+        verbose_name_plural = "Activity Logs"
+
+    def __str__(self):
+        return f"[{self.action_type}] {self.title} at {self.created_at}"
+

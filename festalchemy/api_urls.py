@@ -7,8 +7,10 @@ from .api_views import (
     ResultViewSet, TeamPointsViewSet, UserManagementViewSet, StageViewSet,
     LotCallingAPIView, LotRespinAPIView,
     AdminDashboardStatsAPIView, PublicDashboardStatsAPIView,
+    AdminBootstrapAPIView,
     AdminReportsAPIView,
-    GlobalPosterTemplateViewSet, PosterRenderAPIView
+    GlobalPosterTemplateViewSet, PosterRenderAPIView,
+    ActivityLogViewSet
 )
 
 router = DefaultRouter()
@@ -24,6 +26,7 @@ router.register(r'results', ResultViewSet, basename='results')
 router.register(r'teampoints', TeamPointsViewSet, basename='teampoints')
 router.register(r'users', UserManagementViewSet, basename='users')
 router.register(r'poster-template', GlobalPosterTemplateViewSet, basename='poster-template')
+router.register(r'activities', ActivityLogViewSet, basename='activities')
 
 urlpatterns = [
     # Auth Endpoints
@@ -35,7 +38,8 @@ urlpatterns = [
     path('calling/<int:program_id>/', LotCallingAPIView.as_view(), name='api-calling'),
     path('calling/<int:program_id>/respin/', LotRespinAPIView.as_view(), name='api-calling-respin'),
 
-    # Dashboards & Reports
+    # Dashboards, Bootstrap & Reports
+    path('admin/bootstrap/', AdminBootstrapAPIView.as_view(), name='api-admin-bootstrap'),
     path('admin/stats/', AdminDashboardStatsAPIView.as_view(), name='api-admin-stats'),
     path('public/stats/', PublicDashboardStatsAPIView.as_view(), name='api-public-stats'),
     path('reports/', AdminReportsAPIView.as_view(), name='api-reports'),
