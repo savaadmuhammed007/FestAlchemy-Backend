@@ -168,68 +168,94 @@ class FestSettingsViewSet(viewsets.ModelViewSet):
 
         deleted_counts = {}
 
-        with transaction.atomic():
-            if reset_categories:
-                reset_programs = True
-                reset_members = True
+        # Cascade dependencies
+        if reset_categories:
+            reset_programs = True
+            reset_members = True
+        if reset_teams:
+            reset_members = True
+        if reset_programs or reset_members:
+            reset_results = True
 
-            # 1. Reset Results & Marksheets & Calling Lists & Team Points
-            if reset_results or reset_programs or reset_members or reset_teams:
-                res_cnt = Result.objects.count()
-                ms_cnt = Marksheet.objects.count()
-                cl_cnt = CallingList.objects.count()
-                tp_cnt = TeamPoints.objects.count()
+        from django.db.models.signals import post_delete, post_save
+        from results.models import result_deleted, result_saved
 
-                Result.objects.all().delete()
-                Marksheet.objects.all().delete()
-                CallingList.objects.all().delete()
-                TeamPoints.objects.all().delete()
+        # Temporarily disconnect Result recalculation signals to avoid deadlocks/loops during bulk deletion
+        post_delete.disconnect(result_deleted, sender=Result)
+        post_save.disconnect(result_saved, sender=Result)
 
-                deleted_counts['results'] = res_cnt
-                deleted_counts['marksheets'] = ms_cnt
-                deleted_counts['calling_lists'] = cl_cnt
-                deleted_counts['team_points'] = tp_cnt
+        try:
+            with transaction.atomic():
+                # 1. Reset Results & Marksheets & Calling Lists & Team Points
+                if reset_results:
+                    res_cnt = Result.objects.count()
+                    ms_cnt = Marksheet.objects.count()
+                    cl_cnt = CallingList.objects.count()
+                    tp_cnt = TeamPoints.objects.count()
 
-            # 2. Reset Members
-            if reset_members or reset_teams:
-                mem_cnt = Member.objects.count()
-                Member.objects.all().delete()
-                deleted_counts['members'] = mem_cnt
+                    Result.objects.all().delete()
+                    Marksheet.objects.all().delete()
+                    CallingList.objects.all().delete()
+                    TeamPoints.objects.all().delete()
 
-            # 3. Reset Programs
-            if reset_programs:
-                prog_cnt = Program.objects.count()
-                ProgramGradeSetting.objects.all().delete()
-                PosterTemplate.objects.all().delete()
-                Program.objects.all().delete()
-                deleted_counts['programs'] = prog_cnt
+                    deleted_counts['results'] = res_cnt
+                    deleted_counts['marksheets'] = ms_cnt
+                    deleted_counts['calling_lists'] = cl_cnt
+                    deleted_counts['team_points'] = tp_cnt
 
-            # 4. Reset Teams
-            if reset_teams:
-                team_cnt = Team.objects.count()
-                UserProfile.objects.filter(role='teamlead').update(team=None)
-                Team.objects.all().delete()
-                deleted_counts['teams'] = team_cnt
+                # 2. Reset Members
+                if reset_members:
+                    mem_cnt = Member.objects.count()
+                    Member.objects.all().delete()
+                    deleted_counts['members'] = mem_cnt
 
-            # 5. Reset Categories
-            if reset_categories:
-                cat_cnt = Category.objects.count()
-                Category.objects.all().delete()
-                Category.objects.create(name='General', chest_prefix=900)
-                deleted_counts['categories'] = cat_cnt
+                # 3. Reset Programs
+                if reset_programs:
+                    prog_cnt = Program.objects.count()
+                    ProgramGradeSetting.objects.all().delete()
+                    PosterTemplate.objects.all().delete()
+                    Program.objects.all().delete()
+                    deleted_counts['programs'] = prog_cnt
 
-            # 6. Reset Stages
-            if reset_stages:
-                stage_cnt = Stage.objects.count()
-                Stage.objects.all().delete()
-                deleted_counts['stages'] = stage_cnt
+                # 4. Reset Teams
+                if reset_teams:
+                    team_cnt = Team.objects.count()
+                    UserProfile.objects.filter(team__isnull=False).update(team=None)
+                    Team.objects.all().delete()
+                    deleted_counts['teams'] = team_cnt
 
-            # 7. Reset Judges
-            if reset_judges:
-                judge_users = User.objects.filter(userprofile__role='judge')
-                judge_cnt = judge_users.count()
-                judge_users.delete()
-                deleted_counts['judges'] = judge_cnt
+                # 5. Reset Categories
+                if reset_categories:
+                    cat_cnt = Category.objects.count()
+                    fest_obj = FestSettings.objects.first()
+                    Category.objects.all().delete()
+                    Category.objects.create(name='General', chest_prefix=900, fest=fest_obj)
+                    deleted_counts['categories'] = cat_cnt
+
+                # 6. Reset Stages
+                if reset_stages:
+                    stage_cnt = Stage.objects.count()
+                    Stage.objects.all().delete()
+                    deleted_counts['stages'] = stage_cnt
+
+                # 7. Reset Judges
+                if reset_judges:
+                    judge_user_ids = list(User.objects.filter(userprofile__role='judge').values_list('id', flat=True))
+                    judge_cnt = len(judge_user_ids)
+                    if judge_user_ids:
+                        Marksheet.objects.filter(judge_id__in=judge_user_ids).delete()
+                        User.objects.filter(id__in=judge_user_ids).delete()
+                    deleted_counts['judges'] = judge_cnt
+
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).exception("Fest data reset error: %s", e)
+            return Response({
+                'error': f'Failed to reset fest data: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        finally:
+            post_delete.connect(result_deleted, sender=Result)
+            post_save.connect(result_saved, sender=Result)
 
         invalidate_public_stats_cache()
 

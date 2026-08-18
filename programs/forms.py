@@ -99,11 +99,15 @@ class JudgeRegistrationForm(forms.Form):
     password    = forms.CharField(widget=forms.PasswordInput(attrs={'class': 'form-control', 'placeholder': '••••••••'}))
     confirm_password = forms.CharField(widget=forms.PasswordInput(attrs={'class': 'form-control', 'placeholder': 'Re-enter password'}))
     assigned_programs = forms.ModelMultipleChoiceField(
-        queryset=Program.objects.all(),
+        queryset=Program.objects.none(),
         required=False,
         widget=forms.CheckboxSelectMultiple(),
         label="Assigned Programs"
     )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['assigned_programs'].queryset = Program.objects.all()
 
     def clean_username(self):
         uname = self.cleaned_data['username']
@@ -125,7 +129,7 @@ class UserEditForm(forms.Form):
     username    = forms.CharField(max_length=150, widget=forms.TextInput(attrs={'class': 'form-control'}))
     password    = forms.CharField(required=False, widget=forms.PasswordInput(attrs={'class': 'form-control', 'placeholder': 'Leave blank to keep current password'}))
     assigned_programs = forms.ModelMultipleChoiceField(
-        queryset=Program.objects.all(),
+        queryset=Program.objects.none(),
         required=False,
         widget=forms.CheckboxSelectMultiple(),
         label="Assigned Programs"
@@ -137,6 +141,8 @@ class UserEditForm(forms.Form):
         super().__init__(*args, **kwargs)
         if not self.is_judge:
             del self.fields['assigned_programs']
+        else:
+            self.fields['assigned_programs'].queryset = Program.objects.all()
             
         if self.user_instance:
             self.fields['first_name'].initial = self.user_instance.first_name
