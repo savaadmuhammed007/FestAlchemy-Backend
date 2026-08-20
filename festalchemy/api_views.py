@@ -1410,6 +1410,59 @@ class AdminDashboardStatsAPIView(APIView):
         marksheets_submitted = Marksheet.objects.filter(submitted=True).count()
         marksheets_pending = Marksheet.objects.filter(submitted=False).count()
 
+        # Programs by category breakdown
+        programs_by_category = [
+            {'category_name': item['name'], 'programs_count': item['programs_count']}
+            for item in Category.objects.annotate(programs_count=Count('programs')).values('name', 'programs_count')
+        ]
+
+        # Programs by stage type & format
+        programs_by_stage_type = [
+            {'stage_type': 'On stage', 'count': Program.objects.filter(stage_type='onstage').count()},
+            {'stage_type': 'Offstage', 'count': Program.objects.filter(stage_type='offstage').count()}
+        ]
+        programs_by_format = [
+            {'type': 'Single', 'count': Program.objects.filter(type='single').count()},
+            {'type': 'Group', 'count': Program.objects.filter(type='group').count()}
+        ]
+        scheduled_programs_count = Program.objects.filter(schedule__isnull=False).count()
+
+        # Top Individual Performers (from published single events)
+        top_performers = list(
+            Result.objects.filter(published=True, program__type='single')
+            .values('member__id', 'member__name', 'member__team__name', 'member__category__name')
+            .annotate(total_points=Sum('points'), events_count=Count('id'))
+            .order_by('-total_points')[:8]
+        )
+
+        # Category Toppers (#1 per category)
+        category_toppers = []
+        result_categories = (
+            Result.objects.filter(published=True, program__type='single')
+            .values('member__category__id', 'member__category__name')
+            .distinct()
+        )
+        for cat in result_categories:
+            cat_id = cat['member__category__id']
+            cat_name = cat['member__category__name']
+            topper = (
+                Result.objects.filter(published=True, member__category__id=cat_id, program__type='single')
+                .values('member__id', 'member__name', 'member__team__name', 'member__category__name')
+                .annotate(total_points=Sum('points'), events_count=Count('id'))
+                .order_by('-total_points')
+                .first()
+            )
+            if topper:
+                category_toppers.append({
+                    'category_id': cat_id,
+                    'category_name': cat_name,
+                    'member_id': topper['member__id'],
+                    'member_name': topper['member__name'],
+                    'team_name': topper['member__team__name'],
+                    'total_points': topper['total_points'],
+                    'events_count': topper['events_count']
+                })
+
         # Auto-backfill if empty and get recent activities
         if not ActivityLog.objects.exists():
             backfill_activity_logs()
@@ -1429,10 +1482,16 @@ class AdminDashboardStatsAPIView(APIView):
             'judges_count': judges_count,
             'active_programs_count': active_programs_count,
             'final_programs_count': final_programs_count,
+            'scheduled_programs_count': scheduled_programs_count,
             'stages_count': stages_count,
             'participants_by_team': participants_by_team,
             'participants_by_category': participants_by_category,
+            'programs_by_category': programs_by_category,
+            'programs_by_stage_type': programs_by_stage_type,
+            'programs_by_format': programs_by_format,
             'team_leaderboard': team_leaderboard,
+            'top_performers': top_performers,
+            'category_toppers': category_toppers,
             'marksheets_submitted': marksheets_submitted,
             'marksheets_pending': marksheets_pending,
             'recent_activities': recent_activities
