@@ -149,8 +149,10 @@ def recalculate_team_points():
     from results.models import TeamPoints, Result
     from django.core.cache import cache
 
-    # Clear public stats cache on recalculation
+    # Clear public and admin caches on recalculation
     cache.delete('public_dashboard_stats')
+    cache.delete('admin_bootstrap_data')
+    cache.delete('admin_dashboard_stats')
 
     teams = list(Team.objects.all())
     if not teams:

@@ -1113,8 +1113,36 @@ class ResultViewSet(viewsets.ModelViewSet):
 
         from results.utils import recalculate_team_points
         recalculate_team_points()
+        invalidate_public_stats_cache()
 
         return Response({'message': message, 'published': not is_published})
+
+    @action(detail=False, methods=['post'], permission_classes=[IsAdminRole])
+    def publish_all(self, request):
+        unpublished_programs = Program.objects.filter(results__isnull=False, results__published=False).distinct()
+        if not unpublished_programs.exists():
+            return Response({'message': 'No unpublished results found to publish.', 'published_count': 0})
+        
+        count = 0
+        with transaction.atomic():
+            for prog in unpublished_programs:
+                prog.results.update(published=True)
+                count += 1
+                log_activity(
+                    action_type='result_published',
+                    title=f"Results Published: {prog.name}",
+                    description=f"Results for '{prog.name}' published via bulk action.",
+                    user=request.user,
+                    target_model='Program',
+                    target_id=prog.id,
+                    metadata={'program_id': prog.id, 'program_name': prog.name}
+                )
+
+        from results.utils import recalculate_team_points
+        recalculate_team_points()
+        invalidate_public_stats_cache()
+
+        return Response({'message': f'Published results for {count} competitions.', 'published_count': count})
 
 class TeamPointsViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = TeamPoints.objects.all().order_by('-total_points')
