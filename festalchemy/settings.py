@@ -132,6 +132,16 @@ CACHES = {
 }
 
 
+# Password hashers — optimized for sub-millisecond festival operations
+PASSWORD_HASHERS = [
+    'festalchemy.hashers.FastPBKDF2PasswordHasher',
+    'django.contrib.auth.hashers.PBKDF2PasswordHasher',
+    'django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher',
+    'django.contrib.auth.hashers.Argon2PasswordHasher',
+    'django.contrib.auth.hashers.BCryptSHA256PasswordHasher',
+    'django.contrib.auth.hashers.MD5PasswordHasher',
+]
+
 # Password validation — all removed, any password is accepted
 AUTH_PASSWORD_VALIDATORS = []
 

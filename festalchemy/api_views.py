@@ -14,6 +14,8 @@ import random
 
 def invalidate_public_stats_cache():
     cache.delete('public_dashboard_stats')
+    cache.delete('admin_bootstrap_data')
+    cache.delete('admin_dashboard_stats')
 
 
 # Models
@@ -64,8 +66,8 @@ class LoginAPIView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        username = request.data.get('username')
-        password = request.data.get('password')
+        username = (request.data.get('username') or '').strip()
+        password = request.data.get('password') or ''
         if not username or not password:
             return Response({'error': 'Username and password are required.'}, status=status.HTTP_400_BAD_REQUEST)
         
@@ -75,19 +77,15 @@ class LoginAPIView(APIView):
         
         token, _ = Token.objects.get_or_create(user=user)
         
-        # Profile details
-        role = 'user'
-        team_id = None
-        team_name = None
-        if hasattr(user, 'userprofile'):
-            role = user.userprofile.role
-            if user.userprofile.team:
-                team_id = user.userprofile.team.id
-                team_name = user.userprofile.team.name
+        # Profile & team details in 1 fast query
+        profile = UserProfile.objects.select_related('team').filter(user=user).first()
+        role = profile.role if profile else 'user'
+        team_id = profile.team.id if (profile and profile.team) else None
+        team_name = profile.team.name if (profile and profile.team) else None
         
-        # If teamlead role, find team lead relation
+        # If teamlead role without direct profile team, lookup team lead relation
         if role == 'teamlead' and not team_id:
-            team_obj = Team.objects.filter(teamlead=user).first()
+            team_obj = Team.objects.filter(teamlead=user).only('id', 'name').first()
             if team_obj:
                 team_id = team_obj.id
                 team_name = team_obj.name
@@ -113,17 +111,13 @@ class LogoutAPIView(APIView):
 class MeAPIView(APIView):
     def get(self, request):
         user = request.user
-        role = 'user'
-        team_id = None
-        team_name = None
-        if hasattr(user, 'userprofile'):
-            role = user.userprofile.role
-            if user.userprofile.team:
-                team_id = user.userprofile.team.id
-                team_name = user.userprofile.team.name
+        profile = UserProfile.objects.select_related('team').filter(user=user).first()
+        role = profile.role if profile else 'user'
+        team_id = profile.team.id if (profile and profile.team) else None
+        team_name = profile.team.name if (profile and profile.team) else None
         
         if role == 'teamlead' and not team_id:
-            team_obj = Team.objects.filter(teamlead=user).first()
+            team_obj = Team.objects.filter(teamlead=user).only('id', 'name').first()
             if team_obj:
                 team_id = team_obj.id
                 team_name = team_obj.name
@@ -1331,6 +1325,10 @@ class AdminBootstrapAPIView(APIView):
     permission_classes = [IsAdminRole]
 
     def get(self, request):
+        cached_data = cache.get('admin_bootstrap_data')
+        if cached_data:
+            return Response(cached_data)
+
         fest = FestSettings.objects.first()
         fest_data = FestSettingsSerializer(fest).data if fest else None
 
@@ -1354,7 +1352,7 @@ class AdminBootstrapAPIView(APIView):
         stages = Stage.objects.all().order_by('name')
         stages_data = StageSerializer(stages, many=True).data
 
-        return Response({
+        response_data = {
             'fest_settings': fest_data,
             'categories': cats_data,
             'programs': progs_data,
@@ -1362,12 +1360,18 @@ class AdminBootstrapAPIView(APIView):
             'judges': judges_data,
             'members': members_data,
             'stages': stages_data,
-        })
+        }
+        cache.set('admin_bootstrap_data', response_data, 60)
+        return Response(response_data)
 
 class AdminDashboardStatsAPIView(APIView):
     permission_classes = [IsAdminRole]
 
     def get(self, request):
+        cached_stats = cache.get('admin_dashboard_stats')
+        if cached_stats:
+            return Response(cached_stats)
+
         results_count = Result.objects.count()
         members_count = Member.objects.count()
         marksheets_count = Marksheet.objects.count()
@@ -1472,7 +1476,7 @@ class AdminDashboardStatsAPIView(APIView):
             many=True
         ).data
 
-        return Response({
+        response_stats = {
             'results_count': results_count,
             'members_count': members_count,
             'marksheets_count': marksheets_count,
@@ -1495,7 +1499,9 @@ class AdminDashboardStatsAPIView(APIView):
             'marksheets_submitted': marksheets_submitted,
             'marksheets_pending': marksheets_pending,
             'recent_activities': recent_activities
-        })
+        }
+        cache.set('admin_dashboard_stats', response_stats, 30)
+        return Response(response_stats)
 
 class PublicDashboardStatsAPIView(APIView):
     permission_classes = [permissions.AllowAny]
