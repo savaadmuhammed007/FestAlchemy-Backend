@@ -79,7 +79,12 @@ class LoginAPIView(APIView):
         
         # Profile & team details in 1 fast query
         profile = UserProfile.objects.select_related('team').filter(user=user).first()
-        role = profile.role if profile else 'user'
+        if not profile and (user.is_superuser or user.is_staff):
+            profile, _ = UserProfile.objects.get_or_create(user=user, defaults={'role': 'admin'})
+            if profile.role != 'admin':
+                profile.role = 'admin'
+                profile.save()
+        role = profile.role if profile else ('admin' if (user.is_superuser or user.is_staff) else 'user')
         team_id = profile.team.id if (profile and profile.team) else None
         team_name = profile.team.name if (profile and profile.team) else None
         
@@ -112,7 +117,12 @@ class MeAPIView(APIView):
     def get(self, request):
         user = request.user
         profile = UserProfile.objects.select_related('team').filter(user=user).first()
-        role = profile.role if profile else 'user'
+        if not profile and (user.is_superuser or user.is_staff):
+            profile, _ = UserProfile.objects.get_or_create(user=user, defaults={'role': 'admin'})
+            if profile.role != 'admin':
+                profile.role = 'admin'
+                profile.save()
+        role = profile.role if profile else ('admin' if (user.is_superuser or user.is_staff) else 'user')
         team_id = profile.team.id if (profile and profile.team) else None
         team_name = profile.team.name if (profile and profile.team) else None
         
@@ -773,6 +783,13 @@ class MarksheetViewSet(viewsets.ModelViewSet):
         
         return Marksheet.objects.none()
 
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        serializer = self.get_serializer(queryset, many=True)
+        data = list(serializer.data)
+        data.sort(key=lambda x: (x.get('judge_code') or 'ZZZ', x.get('id') or 0))
+        return Response(data)
+
     @action(detail=True, methods=['post'])
     def evaluate(self, request, pk=None):
         marksheet = self.get_object()
@@ -1163,17 +1180,25 @@ class LotCallingAPIView(APIView):
         status_map = {c.member_id: c.status for c in callings}
         code_map = {c.member_id: c.calling_code.split('-')[1] if '-' in c.calling_code else c.calling_code for c in callings}
         
-        members = list(program.registered_members.all())
+        members = list(program.registered_members.select_related('team').all())
         data = []
         for m in members:
             data.append({
                 'id': m.id,
                 'name': m.name,
                 'chest_no': m.chest_no,
-                'team_name': m.team.name,
+                'team_name': m.team.name if m.team else '',
                 'called': status_map.get(m.id) == 'called',
                 'judge_code': code_map.get(m.id, "??")
             })
+        
+        # Sort candidates: called candidates ordered by their code, waiting candidates by chest_no
+        data.sort(key=lambda x: (
+            0 if x['called'] else 1,
+            x['judge_code'] if x['called'] else x['chest_no'],
+            x['name']
+        ))
+
         return Response({
             'program_name': program.name,
             'max_marks': program.max_marks,
@@ -1195,9 +1220,10 @@ class LotCallingAPIView(APIView):
             callings = list(CallingList.objects.filter(program=program))
             judges = list(program.judges.all())
             count = len(callings)
+            now = timezone.now()
 
             with transaction.atomic():
-                CallingList.objects.filter(program=program).exclude(status='called').update(status='called')
+                CallingList.objects.filter(program=program).update(status='called', called_at=now)
                 if judges:
                     marksheets = [
                         Marksheet(program=program, judge=judge, member_id=c.member_id)
@@ -1205,6 +1231,9 @@ class LotCallingAPIView(APIView):
                         for judge in judges
                     ]
                     Marksheet.objects.bulk_create(marksheets, ignore_conflicts=True)
+
+            cache.delete('admin_bootstrap_data')
+            cache.delete('admin_dashboard_stats')
 
             log_activity(
                 action_type='lot_called',
@@ -1230,14 +1259,18 @@ class LotCallingAPIView(APIView):
         
         with transaction.atomic():
             calling, _ = CallingList.objects.get_or_create(program=program, member=member)
-            if calling.status != 'called':
+            if calling.status != 'called' or not calling.called_at:
                 calling.status = 'called'
+                calling.called_at = timezone.now()
                 calling.save()
             
             judges = list(program.judges.all())
             if judges:
                 marksheets = [Marksheet(program=program, judge=j, member=member) for j in judges]
                 Marksheet.objects.bulk_create(marksheets, ignore_conflicts=True)
+
+        cache.delete('admin_bootstrap_data')
+        cache.delete('admin_dashboard_stats')
                 
         judge_code = calling.calling_code.split('-')[1] if '-' in calling.calling_code else calling.calling_code
         
@@ -1277,6 +1310,9 @@ class LotRespinAPIView(APIView):
             
             from results.utils import recalculate_team_points
             recalculate_team_points()
+
+        cache.delete('admin_bootstrap_data')
+        cache.delete('admin_dashboard_stats')
 
         log_activity(
             action_type='lot_respun',
@@ -1564,12 +1600,20 @@ class PublicDashboardStatsAPIView(APIView):
             teampoints_data = []
         elif limit > 0:
             from results.utils import calculate_team_points_for_programs
-            published_prog_ids = list(
+            published_progs = list(
                 Program.objects.filter(results__published=True)
+                .prefetch_related('calling_lists')
                 .distinct()
-                .order_by('id')[:limit]
-                .values_list('id', flat=True)
             )
+            def prog_spin_key(p):
+                called = p.calling_lists.filter(status='called').order_by('called_at', 'created_at').first()
+                if called:
+                    val = called.called_at or called.created_at
+                    if val:
+                        return val
+                return p.schedule or timezone.now()
+            published_progs.sort(key=prog_spin_key)
+            published_prog_ids = [p.id for p in published_progs[:limit]]
             teampoints_data = calculate_team_points_for_programs(published_prog_ids)
         else:
             teampoints = TeamPoints.objects.select_related('team').order_by('-total_points')

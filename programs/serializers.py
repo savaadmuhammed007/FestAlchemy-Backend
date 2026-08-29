@@ -40,6 +40,7 @@ class ProgramSerializer(serializers.ModelSerializer):
     is_published = serializers.SerializerMethodField(read_only=True)
     lot_completed = serializers.SerializerMethodField(read_only=True)
     has_marksheets = serializers.SerializerMethodField(read_only=True)
+    lot_spun_at = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Program
@@ -48,7 +49,7 @@ class ProgramSerializer(serializers.ModelSerializer):
             'duration', 'calculated_duration_minutes', 'end_time', 'participant_limit',
             'point_weightage_1st', 'point_weightage_2nd', 'point_weightage_3rd', 'max_marks', 
             'schedule', 'venue', 'judges', 'judges_details', 'registered_members_count',
-            'has_results', 'is_published', 'lot_completed', 'has_marksheets', 'fest'
+            'has_results', 'is_published', 'lot_completed', 'has_marksheets', 'lot_spun_at', 'fest'
         ]
         extra_kwargs = {
             'judges': {'required': False}
@@ -124,6 +125,23 @@ class ProgramSerializer(serializers.ModelSerializer):
             called_count = obj.calling_lists.filter(status='called').count()
 
         return called_count >= reg_count
+
+    def get_lot_spun_at(self, obj):
+        if '_prefetched_objects_cache' in obj.__dict__ and 'calling_lists' in obj._prefetched_objects_cache:
+            called_lists = [c for c in obj.calling_lists.all() if c.status == 'called']
+            if not called_lists:
+                return None
+            times = [c.called_at or c.created_at for c in called_lists if c.called_at or c.created_at]
+            if not times:
+                return None
+            earliest = min(times)
+            return earliest.isoformat() if earliest else None
+        else:
+            called = obj.calling_lists.filter(status='called').order_by('called_at', 'created_at').first()
+            if called:
+                val = called.called_at or called.created_at
+                return val.isoformat() if val else None
+        return None
 
 class PosterTemplateSerializer(serializers.ModelSerializer):
     program_name = serializers.ReadOnlyField(source='program.name')

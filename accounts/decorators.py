@@ -8,6 +8,9 @@ def role_required(role):
             if not request.user.is_authenticated:
                 return redirect('login') # Replace 'login' with your login route name when it exists
             
+            if request.user.is_superuser:
+                return view_func(request, *args, **kwargs)
+                
             # Check if user has a UserProfile and the correct role
             if not hasattr(request.user, 'userprofile') or request.user.userprofile.role != role:
                 return redirect('login')

@@ -320,7 +320,7 @@ def marksheet_list(request):
 def marksheet_program_detail(request, program_id):
     """Detailed view of marksheets for a specific program."""
     program = get_object_or_404(Program, id=program_id)
-    sheets = Marksheet.objects.filter(program=program).select_related('member', 'judge')
+    sheets = list(Marksheet.objects.filter(program=program).select_related('member', 'judge'))
     
     # Enrich with judge_code (from CallingList)
     from participants.models import CallingList
@@ -330,6 +330,8 @@ def marksheet_program_detail(request, program_id):
             s.judge_code = calling.calling_code.split('-')[1]
         else:
             s.judge_code = calling.calling_code if calling else "N/A"
+
+    sheets.sort(key=lambda s: (s.judge_code or 'ZZZ', s.id))
 
     return render(request, 'programs/marksheet_program_detail.html', {
         'program': program,
@@ -376,6 +378,17 @@ def result_list(request):
         else:
             pending_programs.append(program)
         
+    def get_spin_time(prog):
+        called = prog.calling_lists.filter(status='called').order_by('called_at', 'created_at').first()
+        if called:
+            val = called.called_at or called.created_at
+            if val:
+                return val
+        return prog.schedule or timezone.now()
+
+    declared_programs.sort(key=get_spin_time)
+    pending_programs.sort(key=get_spin_time)
+        
     categories = Category.objects.all()
     return render(request, 'programs/result_list.html', {
         'declared_programs': declared_programs,
@@ -398,8 +411,14 @@ def result_program_detail(request, program_id):
     if team:
         qs = qs.filter(member__team__id=team)
     
+    from participants.models import CallingList
+    callings = CallingList.objects.filter(program=program).select_related('member')
+    calling_map = {c.member_id: (c.calling_code.split('-')[1] if '-' in c.calling_code else c.calling_code) for c in callings if c.calling_code}
+    
     results_list = list(qs)
     for r in results_list:
+        if not r.judge_code and r.member_id in calling_map:
+            r.judge_code = calling_map[r.member_id]
         sheets = Marksheet.objects.filter(program=program, member=r.member).select_related('judge')
         r.judges_scores = []
         for s in sheets:
@@ -653,9 +672,12 @@ def call_participant(request, program_id):
         member.called = status_map.get(member.id) == 'called'
         member.judge_code = code_map.get(member.id, "??")
     
+    called_members = sorted([m for m in members if m.called], key=lambda m: (m.judge_code or 'ZZZ', m.id))
+
     return render(request, 'programs/spin_lot.html', {
         'program': program,
         'members': members,
+        'called_members': called_members,
     })
 
 @role_required('admin')
@@ -1008,14 +1030,24 @@ def report_marksheets(request):
         
     if program_filter:
         program = get_object_or_404(Program, id=program_filter)
-        sheets = Marksheet.objects.filter(program=program).select_related('member', 'member__team', 'judge').order_by('judge__username', 'member__name')
+        sheets = list(Marksheet.objects.filter(program=program).select_related('member', 'member__team', 'judge'))
+        
+        from participants.models import CallingList
+        for s in sheets:
+            calling = CallingList.objects.filter(program=program, member=s.member).first()
+            if calling and '-' in calling.calling_code:
+                s.judge_code = calling.calling_code.split('-')[1]
+            else:
+                s.judge_code = calling.calling_code if calling else "N/A"
+
+        sheets.sort(key=lambda s: (s.judge_code or 'ZZZ', s.judge.username, s.id))
         
         if judge_filter:
-            sheets = sheets.filter(judge_id=judge_filter)
+            sheets = [s for s in sheets if str(s.judge_id) == str(judge_filter)]
         if status_filter == 'submitted':
-            sheets = sheets.filter(submitted=True)
+            sheets = [s for s in sheets if s.submitted]
         elif status_filter == 'draft':
-            sheets = sheets.filter(submitted=False)
+            sheets = [s for s in sheets if not s.submitted]
             
         for s in sheets:
             raw = s.marks

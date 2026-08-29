@@ -141,6 +141,7 @@
             <table>
                 <thead>
                     <tr>
+                        <th style="width: 12%;">Lot Code</th>
                         <th>Judge Name</th>
                         <th>Participant</th>
                         <th>Team</th>
@@ -151,6 +152,7 @@
                 <tbody>
                     {% for sheet in sheets %}
                         <tr>
+                            <td><strong style="color: var(--secondary); font-size: 1.1rem;">{{ sheet.judge_code }}</strong></td>
                             <td><strong style="color: var(--primary);">{{ sheet.judge.username }}</strong></td>
                             <td><strong>{{ sheet.member.name }}</strong> ({{ sheet.member.chest_no }})</td>
                             <td>{{ sheet.member.team.name }}</td>

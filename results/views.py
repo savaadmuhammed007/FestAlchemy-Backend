@@ -35,6 +35,10 @@ def program_results(request, program_id):
     program = get_object_or_404(Program, id=program_id)
     qs = Result.objects.filter(program=program, published=True).select_related('member').order_by('rank')
     
+    from participants.models import CallingList
+    callings = CallingList.objects.filter(program=program).select_related('member')
+    calling_map = {c.member_id: (c.calling_code.split('-')[1] if '-' in c.calling_code else c.calling_code) for c in callings if c.calling_code}
+
     results_list = list(qs)
     all_sheets = Marksheet.objects.filter(program=program).select_related('judge')
     sheets_by_member = {}
@@ -44,6 +48,8 @@ def program_results(request, program_id):
         sheets_by_member[s.member_id].append(s)
 
     for r in results_list:
+        if not r.judge_code and r.member_id in calling_map:
+            r.judge_code = calling_map[r.member_id]
         sheets = sheets_by_member.get(r.member_id, [])
         r.judges_scores = []
         for s in sheets:

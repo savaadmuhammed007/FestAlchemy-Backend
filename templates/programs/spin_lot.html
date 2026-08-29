@@ -123,14 +123,14 @@
             </tr>
         </thead>
         <tbody>
-            {% for member in members %}{% if member.called %}
+            {% for member in called_members %}
             <tr style="border-bottom:1px solid #ddd;">
                 <td style="padding:.7rem; font-weight:800; font-size:1.2rem;">{{ member.judge_code }}</td>
                 <td style="padding:.7rem;">{{ member.chest_no }}</td>
                 <td style="padding:.7rem;">{{ member.name }}</td>
                 <td style="padding:.7rem;">{{ member.team.name }}</td>
             </tr>
-            {% endif %}{% endfor %}
+            {% endfor %}
         </tbody>
     </table>
 </div>
@@ -186,8 +186,7 @@
             </tr>
         </thead>
         <tbody id="summary-body">
-            {% for member in members %}
-            {% if member.called %}
+            {% for member in called_members %}
             <tr>
                 <td>
                     <strong style="color: var(--success); font-size: 1.1rem;">{{ member.judge_code }}</strong>
@@ -200,7 +199,6 @@
                     <span class="badge badge-primary">{{ member.team.name }}</span>
                 </td>
             </tr>
-            {% endif %}
             {% endfor %}
         </tbody>
     </table>
