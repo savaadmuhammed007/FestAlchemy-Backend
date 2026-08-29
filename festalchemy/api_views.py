@@ -9,6 +9,7 @@ from django.shortcuts import get_object_or_404
 from django.db import transaction
 from django.db.models import Count, Q, F, Sum
 from django.core.cache import cache
+from django.utils import timezone
 import json
 import random
 
@@ -1206,7 +1207,10 @@ class LotCallingAPIView(APIView):
         })
 
     def post(self, request, program_id):
-        if not request.user.is_authenticated or not hasattr(request.user, 'userprofile') or request.user.userprofile.role != 'admin':
+        if not request.user.is_authenticated:
+            return Response({'error': 'Authentication required.'}, status=status.HTTP_401_UNAUTHORIZED)
+        is_admin = request.user.is_superuser or request.user.is_staff or (hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'admin')
+        if not is_admin:
             return Response({'error': 'Admin permission required.'}, status=status.HTTP_403_FORBIDDEN)
             
         program = get_object_or_404(Program, id=program_id)
