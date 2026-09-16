@@ -3,7 +3,7 @@ services:
     name: festalchemy-backend
     env: python
     buildCommand: ./build.sh
-    startCommand: gunicorn festalchemy.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --threads 4 --worker-class gthread --worker-tmp-dir /dev/shm --timeout 120 --keep-alive 5
+    startCommand: gunicorn festalchemy.wsgi:application
     healthCheckPath: /health/
     envVars:
       - key: PYTHON_VERSION
