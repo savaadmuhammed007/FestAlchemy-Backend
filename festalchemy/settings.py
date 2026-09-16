@@ -75,17 +75,25 @@ DATABASE_URL = config('DATABASE_URL', default=DEFAULT_SUPABASE_URL)
 conn_max_age_val = config('CONN_MAX_AGE', default=60, cast=int)
 
 if DATABASE_URL and dj_database_url:
-    # In Serverless environments (Vercel), conn_max_age can be overridden via env CONN_MAX_AGE=0.
-    # Supabase Pooler requires port 6543 (Transaction Mode) for serverless to prevent max connection limits.
+    # In Serverless environments (Vercel) and PgBouncer poolers, conn_max_age must be 0 to avoid stale/closed sockets.
+    # Supabase Pooler requires port 6543 (Transaction Mode).
+    is_pooler = '.pooler.supabase.' in DATABASE_URL or ':6543' in DATABASE_URL
     if '.pooler.supabase.' in DATABASE_URL and ':5432' in DATABASE_URL:
         DATABASE_URL = DATABASE_URL.replace(':5432', ':6543')
+        is_pooler = True
+
+    parsed_db = dj_database_url.parse(
+        DATABASE_URL,
+        conn_max_age=0 if is_pooler else conn_max_age_val,
+        ssl_require=True
+    )
+    if is_pooler:
+        parsed_db['DISABLE_SERVER_SIDE_CURSORS'] = True
+        parsed_db.setdefault('OPTIONS', {})
+        parsed_db['OPTIONS']['connect_timeout'] = 15
 
     DATABASES = {
-        'default': dj_database_url.parse(
-            DATABASE_URL,
-            conn_max_age=conn_max_age_val,
-            ssl_require=True
-        )
+        'default': parsed_db
     }
 else:
     DB_ENGINE = config('DB_ENGINE', default='django.db.backends.postgresql')

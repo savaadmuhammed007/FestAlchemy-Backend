@@ -18,9 +18,11 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from django.http import HttpResponse
 from .db_check import db_check_view
 
 urlpatterns = [
+    path('health/', lambda request: HttpResponse('OK', content_type='text/plain'), name='health_check'),
     path('db-check/', db_check_view, name='db_check'),
     path('admin/', admin.site.urls),
     path('api/', include('festalchemy.api_urls')),
