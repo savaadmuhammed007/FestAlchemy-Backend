@@ -52,6 +52,17 @@ def evaluate_list(request, program_id):
         else:
             sheet.judge_code = calling.calling_code if calling else "N/A"
             
+    def get_code_sort_key(sheet):
+        code = getattr(sheet, 'judge_code', '') or ''
+        if not code or code == 'N/A':
+            return (1, 0, [], sheet.id)
+        import re
+        code_str = str(code).strip()
+        if code_str.isalpha():
+            return (0, len(code_str), [code_str.upper()], sheet.id)
+        parts = [int(p) if p.isdigit() else p.upper() for p in re.split(r'(\d+)', code_str) if p]
+        return (0, 0, parts, sheet.id)
+
     pending_marksheets = []
     submitted_marksheets = []
     for sheet in marksheets:
@@ -59,6 +70,9 @@ def evaluate_list(request, program_id):
             submitted_marksheets.append(sheet)
         else:
             pending_marksheets.append(sheet)
+
+    pending_marksheets.sort(key=get_code_sort_key)
+    submitted_marksheets.sort(key=get_code_sort_key)
             
     return render(request, 'judging/evaluate_list.html', {
         'program': program,

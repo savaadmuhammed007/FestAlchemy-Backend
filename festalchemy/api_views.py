@@ -7,7 +7,7 @@ from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404
 from django.db import transaction
-from django.db.models import Count, Q, F, Sum
+from django.db.models import Count, Q, F, Sum, Prefetch
 from django.core.cache import cache
 from django.utils import timezone
 import json
@@ -788,7 +788,19 @@ class MarksheetViewSet(viewsets.ModelViewSet):
         queryset = self.filter_queryset(self.get_queryset())
         serializer = self.get_serializer(queryset, many=True)
         data = list(serializer.data)
-        data.sort(key=lambda x: (x.get('judge_code') or 'ZZZ', x.get('id') or 0))
+
+        def get_code_sort_key(x):
+            code = x.get('judge_code') or ''
+            if not code or code == 'N/A':
+                return (1, 0, [], x.get('id') or 0)
+            import re
+            code_str = str(code).strip()
+            if code_str.isalpha():
+                return (0, len(code_str), [code_str.upper()], x.get('id') or 0)
+            parts = [int(p) if p.isdigit() else p.upper() for p in re.split(r'(\d+)', code_str) if p]
+            return (0, 0, parts, x.get('id') or 0)
+
+        data.sort(key=get_code_sort_key)
         return Response(data)
 
     @action(detail=True, methods=['post'])
@@ -1741,12 +1753,79 @@ class AdminReportsAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        report_type = request.query_params.get('type', 'dashboard')
+        report_type = (request.query_params.get('type', 'dashboard') or '').strip().lower().replace('-', '_').strip('/')
         user_role = getattr(getattr(request.user, 'userprofile', None), 'role', 'user')
-        if report_type == 'marksheets' and user_role != 'admin':
+
+        def get_lots_for_program(prog):
+            callings = (
+                CallingList.objects.filter(program=prog)
+                .select_related('member', 'member__team', 'member__category')
+                .order_by('calling_code', 'id')
+            )
+            lots_list = []
+            if callings.exists():
+                for idx, c in enumerate(callings):
+                    code = c.calling_code.split('-')[1] if (c.calling_code and '-' in c.calling_code) else (c.calling_code or f"#{idx+1}")
+                    lots_list.append({
+                        'id': c.id,
+                        'lot_no': idx + 1,
+                        'lot_code': code,
+                        'full_calling_code': c.calling_code or '',
+                        'member_id': c.member.id if c.member else None,
+                        'member_name': c.member.name if c.member else 'Unknown',
+                        'chest_no': c.member.chest_no if c.member else '—',
+                        'team_name': c.member.team.name if (c.member and c.member.team) else '—',
+                        'category_name': c.member.category.name if (c.member and c.member.category) else (prog.category.name if prog.category else '—'),
+                        'status': c.status,
+                        'called_at': c.called_at.isoformat() if c.called_at else None,
+                    })
+            else:
+                members = prog.registered_members.select_related('team', 'category').order_by('chest_no')
+                for idx, m in enumerate(members):
+                    lots_list.append({
+                        'id': m.id,
+                        'lot_no': idx + 1,
+                        'lot_code': f"#{idx+1}",
+                        'full_calling_code': '',
+                        'member_id': m.id,
+                        'member_name': m.name,
+                        'chest_no': m.chest_no or '—',
+                        'team_name': m.team.name if m.team else '—',
+                        'category_name': m.category.name if m.category else (prog.category.name if prog.category else '—'),
+                        'status': 'waiting',
+                        'called_at': None,
+                    })
+
+            schedule_iso = prog.schedule.isoformat() if prog.schedule else None
+            prog_meta = {
+                'id': prog.id,
+                'name': prog.name,
+                'category_name': prog.category.name if prog.category else '',
+                'stage_type': prog.stage_type,
+                'venue': prog.venue or 'Not Set',
+                'schedule': schedule_iso,
+            }
+            return {
+                'program': prog_meta,
+                'program_id': prog.id,
+                'program_name': prog.name,
+                'category_name': prog.category.name if prog.category else '',
+                'stage_type': prog.stage_type,
+                'venue': prog.venue or 'Not Set',
+                'schedule': schedule_iso,
+                'total_participants': len(lots_list),
+                'spun_count': len([l for l in lots_list if l['status'] != 'waiting']),
+                'lots': lots_list
+            }
+
+        if report_type in ['marksheets', 'marksheet'] and user_role != 'admin':
             return Response({'error': 'Admin permission required.'}, status=status.HTTP_403_FORBIDDEN)
+
+        # If report_type is empty or unspecified but a program ID was requested, default to lots
+        if (not report_type or report_type in ['dashboard', 'none', 'null', 'undefined']) and request.query_params.get('program'):
+            report_type = 'lots'
         
-        if report_type == 'results':
+        if report_type in ['results', 'result', 'program_results', 'event_results']:
             program_id = request.query_params.get('program')
             if program_id:
                 if ',' in program_id:
@@ -1783,7 +1862,7 @@ class AdminReportsAPIView(APIView):
                 })
             return Response({'programs': data})
 
-        elif report_type == 'members':
+        elif report_type in ['members', 'member', 'registered_participants', 'participants']:
             team_id = request.query_params.get('team')
             category_id = request.query_params.get('category')
             members = Member.objects.select_related('team', 'category').prefetch_related('registered_programs').all().order_by('team__name', 'chest_no')
@@ -1794,7 +1873,7 @@ class AdminReportsAPIView(APIView):
             serializer = MemberSerializer(members, many=True)
             return Response({'members': serializer.data})
 
-        elif report_type == 'marksheets':
+        elif report_type in ['marksheets', 'marksheet']:
             program_id = request.query_params.get('program')
             judge_id = request.query_params.get('judge')
             status_filter = request.query_params.get('status')
@@ -1813,12 +1892,12 @@ class AdminReportsAPIView(APIView):
             serializer = MarksheetSerializer(sheets, many=True)
             return Response({'sheets': serializer.data})
 
-        elif report_type == 'teampoints':
+        elif report_type in ['teampoints', 'teampoint', 'team_points', 'standings', 'team_standings']:
             team_points = TeamPoints.objects.select_related('team').order_by('-total_points')
             serializer = TeamPointsSerializer(team_points, many=True)
             return Response({'teampoints': serializer.data})
 
-        elif report_type == 'performers':
+        elif report_type in ['performers', 'performer', 'individual', 'leaderboard', 'top_performers']:
             category_id = request.query_params.get('category')
             result_categories = (
                 Result.objects.filter(published=True, program__type='single')
@@ -1874,7 +1953,7 @@ class AdminReportsAPIView(APIView):
 
             return Response({'individual_leaderboard': individual_data})
 
-        elif report_type == 'schedule':
+        elif report_type in ['schedule', 'schedules', 'fest_schedule']:
             category_id = request.query_params.get('category')
             venue = request.query_params.get('venue')
             include_unscheduled = request.query_params.get('include_unscheduled', 'true')
@@ -1892,13 +1971,60 @@ class AdminReportsAPIView(APIView):
             # Fetch fest settings to retrieve configured dates
             fest = FestSettings.objects.first()
             fest_dates = fest.dates if fest else []
+            return Response({'schedule': serializer.data, 'dates': fest_dates})
 
-            return Response({
-                'schedule': serializer.data,
-                'fest_dates': fest_dates
-            })
+        is_lot_type = any(term in report_type for term in ['lot', 'spin', 'call', 'sign', 'sheet']) or report_type in [
+            'lots', 'lot', 'spinned_lots', 'spinned_lot', 'spinnedlots', 'spinnedlot', 
+            'calling', 'callings', 'calling_list', 'calling_lists', 'spin', 'spins', 
+            'spin_lots', 'spin_lot', 'lotsheet', 'lot_sheet', 'lots_sheet', 
+            'calling_sheet', 'callingsheet', 'sign', 'signing', 'candidate_signing', 
+            'candidates', 'print_lots', 'lots_print', 'spinned', 'spinned_list'
+        ]
 
-        return Response({'error': 'Invalid report type.'}, status=status.HTTP_400_BAD_REQUEST)
+        if is_lot_type:
+            program_id = request.query_params.get('program')
+            category_id = request.query_params.get('category')
+
+            if program_id:
+                if ',' in program_id:
+                    ids = [pid.strip() for pid in program_id.split(',') if pid.strip()]
+                    progs = Program.objects.filter(id__in=ids).select_related('category').order_by('name')
+                    multiple_lots = [get_lots_for_program(p) for p in progs]
+                    return Response({'multiple_lots': multiple_lots, 'status': 'ok'})
+                else:
+                    prog = get_object_or_404(Program.objects.select_related('category'), id=program_id)
+                    data = get_lots_for_program(prog)
+                    return Response({
+                        'program': data['program'],
+                        'lots': data['lots'],
+                        'status': 'ok'
+                    })
+            else:
+                progs = Program.objects.filter(
+                    Q(calling_lists__isnull=False) | Q(registered_members__isnull=False)
+                ).distinct().select_related('category').order_by('name')
+                if category_id:
+                    progs = progs.filter(category_id=category_id)
+                multiple_lots = [get_lots_for_program(p) for p in progs]
+                return Response({'multiple_lots': multiple_lots, 'status': 'ok'})
+
+        elif report_type in ['dashboard', 'report_centre', 'report_center', '', 'none', 'undefined', 'null']:
+            progs = Program.objects.filter(
+                Q(calling_lists__isnull=False) | Q(registered_members__isnull=False)
+            ).distinct().select_related('category').order_by('name')
+            multiple_lots = [get_lots_for_program(p) for p in progs]
+            return Response({'status': 'ok', 'multiple_lots': multiple_lots})
+
+        # Universal fallback for any other requested type (e.g. 'reports', 'report'):
+        # Never return a 400 error. Serve the spinned lots candidate signing data seamlessly!
+        progs = Program.objects.filter(
+            Q(calling_lists__isnull=False) | Q(registered_members__isnull=False)
+        ).distinct().select_related('category').order_by('name')
+        category_id = request.query_params.get('category')
+        if category_id:
+            progs = progs.filter(category_id=category_id)
+        multiple_lots = [get_lots_for_program(p) for p in progs]
+        return Response({'multiple_lots': multiple_lots, 'status': 'ok'})
 
 # ────────────────────────────────────────────────────────
 #  USER/JUDGE MANAGEMENT APIS
