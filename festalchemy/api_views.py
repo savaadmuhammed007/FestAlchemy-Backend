@@ -1441,7 +1441,7 @@ class AdminBootstrapAPIView(APIView):
             'members': members_data,
             'stages': stages_data,
         }
-        cache.set('admin_bootstrap_data', response_data, 60)
+        cache.set('admin_bootstrap_data', response_data, 300)
         return Response(response_data)
 
 class AdminDashboardStatsAPIView(APIView):
@@ -1580,7 +1580,7 @@ class AdminDashboardStatsAPIView(APIView):
             'marksheets_pending': marksheets_pending,
             'recent_activities': recent_activities
         }
-        cache.set('admin_dashboard_stats', response_stats, 30)
+        cache.set('admin_dashboard_stats', response_stats, 180)
         return Response(response_stats)
 
 class PublicDashboardStatsAPIView(APIView):
@@ -1606,7 +1606,7 @@ class PublicDashboardStatsAPIView(APIView):
         cats_data = CategorySerializer(cats, many=True).data
         
         # Schedule (with select_related and prefetch_related to avoid N+1 queries)
-        progs = Program.objects.select_related('category').prefetch_related('judges', 'results', 'calling_lists', 'registered_members').all().order_by('schedule')
+        progs = Program.objects.select_related('category').prefetch_related('judges', 'results', 'calling_lists', 'registered_members', 'marksheets').all().order_by('schedule')
         progs_data = ProgramSerializer(progs, many=True).data
         
         # Team points leaderboard
@@ -1622,8 +1622,10 @@ class PublicDashboardStatsAPIView(APIView):
                 .distinct()
             )
             def prog_spin_key(p):
-                called = p.calling_lists.filter(status='called').order_by('called_at', 'created_at').first()
-                if called:
+                called_items = [c for c in p.calling_lists.all() if c.status == 'called']
+                called_items.sort(key=lambda c: (c.called_at or c.created_at))
+                if called_items:
+                    called = called_items[0]
                     val = called.called_at or called.created_at
                     if val:
                         return val
@@ -1742,7 +1744,7 @@ class PublicDashboardStatsAPIView(APIView):
             }
         }
 
-        cache.set('public_dashboard_stats', response_data, 60)
+        cache.set('public_dashboard_stats', response_data, 300)
         return Response(response_data)
 
 # ────────────────────────────────────────────────────────

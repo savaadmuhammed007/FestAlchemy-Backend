@@ -9,11 +9,16 @@ class FestSettingsSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class CategorySerializer(serializers.ModelSerializer):
-    programs_count = serializers.IntegerField(source='programs.count', read_only=True)
+    programs_count = serializers.SerializerMethodField(read_only=True)
     
     class Meta:
         model = Category
         fields = ['id', 'name', 'chest_prefix', 'programs_count', 'fest']
+
+    def get_programs_count(self, obj):
+        if hasattr(obj, 'programs_count'):
+            return obj.programs_count
+        return obj.programs.count()
 
 class ProgramGradeSettingSerializer(serializers.ModelSerializer):
     class Meta:
