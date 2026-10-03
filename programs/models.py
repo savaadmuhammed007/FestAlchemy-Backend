@@ -177,6 +177,9 @@ class ActivityLog(models.Model):
         ordering = ['-created_at']
         verbose_name = "Activity Log"
         verbose_name_plural = "Activity Logs"
+        indexes = [
+            models.Index(fields=['fest', '-created_at'], name='idx_actlog_fest_created'),
+        ]
 
     def __str__(self):
         return f"[{self.action_type}] {self.title} at {self.created_at}"

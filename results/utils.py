@@ -192,40 +192,46 @@ def recalculate_team_points():
 
 
 def calculate_team_points_for_programs(program_ids=None):
-    """Calculate team points leaderboard filtered by specific published program IDs."""
+    """Calculate team points leaderboard filtered by specific published program IDs in a single batch query."""
     from participants.models import Team
     from results.models import Result
-    from django.db.models import Sum
 
-    teams = Team.objects.all()
-    results_qs = Result.objects.filter(published=True).select_related('program', 'member')
+    teams = list(Team.objects.all())
+    if not teams:
+        return []
+
+    # Map team_id -> team points dict
+    team_data = {
+        t.id: {
+            'id': t.id,
+            'team': t.id,
+            'team_name': t.name,
+            'total_points': 0,
+            'breakdown': {}
+        }
+        for t in teams
+    }
+
+    results_qs = Result.objects.filter(published=True).select_related('program', 'member', 'member__team')
     if program_ids is not None:
         results_qs = results_qs.filter(program_id__in=program_ids)
 
-    leaderboard = []
-    for team in teams:
-        team_results = results_qs.filter(member__team=team)
-        total = team_results.aggregate(total=Sum('points'))['total'] or 0.0
-        
-        breakdown = {}
-        for r in team_results:
-            prog_name = r.program.name
-            if prog_name not in breakdown:
-                breakdown[prog_name] = []
-            breakdown[prog_name].append({
+    for r in results_qs:
+        if not r.member or not r.member.team_id:
+            continue
+        t_id = r.member.team_id
+        if t_id in team_data:
+            team_data[t_id]['total_points'] += int(r.points or 0)
+            prog_name = r.program.name if r.program else 'Unknown'
+            if prog_name not in team_data[t_id]['breakdown']:
+                team_data[t_id]['breakdown'][prog_name] = []
+            team_data[t_id]['breakdown'][prog_name].append({
                 'member': r.member.name,
                 'rank': r.rank,
                 'pts': r.points
             })
-        
-        leaderboard.append({
-            'id': team.id,
-            'team': team.id,
-            'team_name': team.name,
-            'total_points': int(total),
-            'breakdown': breakdown
-        })
-    
+
+    leaderboard = list(team_data.values())
     leaderboard.sort(key=lambda x: x['total_points'], reverse=True)
     return leaderboard
 

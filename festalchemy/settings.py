@@ -72,10 +72,9 @@ WSGI_APPLICATION = 'festalchemy.wsgi.application'
 DEFAULT_SUPABASE_URL = 'postgresql://postgres.xqstrrlpmbmfozfgweuj:mohdsavaaD%40123%24@aws-0-ap-southeast-2.pooler.supabase.com:6543/postgres'
 DATABASE_URL = config('DATABASE_URL', default=DEFAULT_SUPABASE_URL)
 
-conn_max_age_val = config('CONN_MAX_AGE', default=60, cast=int)
+conn_max_age_val = config('CONN_MAX_AGE', default=300, cast=int)
 
 if DATABASE_URL and dj_database_url:
-    # In Serverless environments (Vercel) and PgBouncer poolers, conn_max_age must be 0 to avoid stale/closed sockets.
     # Supabase Pooler requires port 6543 (Transaction Mode).
     is_pooler = '.pooler.supabase.' in DATABASE_URL or ':6543' in DATABASE_URL
     if '.pooler.supabase.' in DATABASE_URL and ':5432' in DATABASE_URL:
@@ -84,13 +83,20 @@ if DATABASE_URL and dj_database_url:
 
     parsed_db = dj_database_url.parse(
         DATABASE_URL,
-        conn_max_age=0 if is_pooler else conn_max_age_val,
+        conn_max_age=conn_max_age_val,
         ssl_require=True
     )
+    # Enable connection health checks to prevent stale/dropped sockets
+    parsed_db['CONN_HEALTH_CHECKS'] = True
+
     if is_pooler:
         parsed_db['DISABLE_SERVER_SIDE_CURSORS'] = True
         parsed_db.setdefault('OPTIONS', {})
         parsed_db['OPTIONS']['connect_timeout'] = 15
+        parsed_db['OPTIONS']['keepalives'] = 1
+        parsed_db['OPTIONS']['keepalives_idle'] = 30
+        parsed_db['OPTIONS']['keepalives_interval'] = 10
+        parsed_db['OPTIONS']['keepalives_count'] = 5
 
     DATABASES = {
         'default': parsed_db

@@ -142,5 +142,10 @@ class CallingList(models.Model):
             self.calling_code = f"{prefix}-{letter}"
         super().save(*args, **kwargs)
 
+    class Meta:
+        indexes = [
+            models.Index(fields=['program', 'status', 'called_at'], name='idx_call_prog_stat_call'),
+        ]
+
     def __str__(self):
         return f"{self.member.name} - {self.program.name} ({self.status})"

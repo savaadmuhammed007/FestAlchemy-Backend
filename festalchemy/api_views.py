@@ -1519,37 +1519,28 @@ class AdminDashboardStatsAPIView(APIView):
             .order_by('-total_points')[:8]
         )
 
-        # Category Toppers (#1 per category)
+        # Category Toppers (#1 per category in a single optimized query)
         category_toppers = []
-        result_categories = (
+        all_cat_leaders = (
             Result.objects.filter(published=True, program__type='single')
-            .values('member__category__id', 'member__category__name')
-            .distinct()
+            .values('member__category__id', 'member__category__name', 'member__id', 'member__name', 'member__team__name')
+            .annotate(total_points=Sum('points'), events_count=Count('id'))
+            .order_by('member__category__id', '-total_points')
         )
-        for cat in result_categories:
-            cat_id = cat['member__category__id']
-            cat_name = cat['member__category__name']
-            topper = (
-                Result.objects.filter(published=True, member__category__id=cat_id, program__type='single')
-                .values('member__id', 'member__name', 'member__team__name', 'member__category__name')
-                .annotate(total_points=Sum('points'), events_count=Count('id'))
-                .order_by('-total_points')
-                .first()
-            )
-            if topper:
+        seen_cats = set()
+        for topper in all_cat_leaders:
+            cat_id = topper['member__category__id']
+            if cat_id not in seen_cats:
+                seen_cats.add(cat_id)
                 category_toppers.append({
                     'category_id': cat_id,
-                    'category_name': cat_name,
+                    'category_name': topper['member__category__name'],
                     'member_id': topper['member__id'],
                     'member_name': topper['member__name'],
                     'team_name': topper['member__team__name'],
                     'total_points': topper['total_points'],
                     'events_count': topper['events_count']
                 })
-
-        # Auto-backfill if empty and get recent activities
-        if not ActivityLog.objects.exists():
-            backfill_activity_logs()
 
         recent_activities = ActivityLogSerializer(
             ActivityLog.objects.all().order_by('-created_at')[:10],
@@ -1637,34 +1628,36 @@ class PublicDashboardStatsAPIView(APIView):
             teampoints = TeamPoints.objects.select_related('team').order_by('-total_points')
             teampoints_data = TeamPointsSerializer(teampoints, many=True).data
         
-        # Individual Leaderboard — top 20 per category (only counting program__type='single')
-        result_categories = (
+        # Individual Leaderboard — top 20 per category (single batch aggregation)
+        all_performers = (
             Result.objects.filter(published=True, program__type='single')
-            .values('member__category__id', 'member__category__name')
-            .distinct()
+            .values('member__category__id', 'member__category__name', 'member__id', 'member__name', 'member__team__name')
+            .annotate(total=Sum('points'), events=Count('id'))
+            .order_by('member__category__id', '-total')
         )
 
-        individual_data = []
-        for cat in result_categories:
-            cat_id = cat['member__category__id']
-            cat_name = cat['member__category__name']
+        cat_groups = {}
+        for item in all_performers:
+            cid = item['member__category__id']
+            cname = item['member__category__name']
+            if cid not in cat_groups:
+                cat_groups[cid] = {'name': cname, 'items': []}
+            if len(cat_groups[cid]['items']) < 20:
+                cat_groups[cid]['items'].append(item)
 
-            # Top 20 for this category
-            cat_leaderboard = (
-                Result.objects.filter(published=True, member__category__id=cat_id, program__type='single')
-                .values('member__id', 'member__name', 'member__team__name')
-                .annotate(total=Sum('points'), events=Count('id'))
-                .order_by('-total')[:20]
-            )
+        top_member_ids = [
+            item['member__id']
+            for group in cat_groups.values()
+            for item in group['items']
+        ]
 
-            # Per-program breakdown for this category's top members
-            cat_member_ids = [item['member__id'] for item in cat_leaderboard]
+        prog_map = {}
+        if top_member_ids:
             per_prog = (
-                Result.objects.filter(published=True, member__id__in=cat_member_ids, program__type='single')
+                Result.objects.filter(published=True, member__id__in=top_member_ids, program__type='single')
                 .values('member__id', 'program__id', 'program__name', 'points', 'rank')
                 .order_by('member__id', 'program__name')
             )
-            prog_map = {}
             for r in per_prog:
                 mid = r['member__id']
                 if mid not in prog_map:
@@ -1676,9 +1669,11 @@ class PublicDashboardStatsAPIView(APIView):
                     'rank': r['rank'],
                 })
 
+        individual_data = []
+        for cat_id, group in cat_groups.items():
             individual_data.append({
                 'category_id': cat_id,
-                'category_name': cat_name,
+                'category_name': group['name'],
                 'performers': [{
                     'member_id': item['member__id'],
                     'member_name': item['member__name'],
@@ -1686,17 +1681,16 @@ class PublicDashboardStatsAPIView(APIView):
                     'total_points': item['total'],
                     'events_count': item['events'],
                     'program_breakdown': prog_map.get(item['member__id'], []),
-                } for item in cat_leaderboard],
+                } for item in group['items']],
             })
 
-        # Programs with results ordered by latest published first
-        published_results_qs = Result.objects.filter(published=True).order_by('-id')
-        seen_prog_ids = set()
-        recent_prog_ids = []
-        for r in published_results_qs:
-            if r.program_id not in seen_prog_ids:
-                seen_prog_ids.add(r.program_id)
-                recent_prog_ids.append(r.program_id)
+        # Programs with results ordered by latest published first (using lean values_list)
+        published_results_qs = (
+            Result.objects.filter(published=True)
+            .order_by('-id')
+            .values_list('program_id', flat=True)
+        )
+        recent_prog_ids = list(dict.fromkeys(published_results_qs))
 
         published_program_ids = recent_prog_ids
         progs_with_results = Program.objects.filter(id__in=published_program_ids).select_related('category')

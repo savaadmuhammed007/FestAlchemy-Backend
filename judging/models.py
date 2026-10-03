@@ -10,5 +10,10 @@ class Marksheet(models.Model):
     marks = models.JSONField(default=dict, help_text="Store criteria name and mark mapping or just total")
     submitted = models.BooleanField(default=False)
 
+    class Meta:
+        indexes = [
+            models.Index(fields=['program', 'judge', 'submitted'], name='idx_mksht_prog_jdg_sub'),
+        ]
+
     def __str__(self):
         return f"{self.program.name} - {self.member.chest_no} (Judge: {self.judge.username})"

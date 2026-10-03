@@ -12,6 +12,12 @@ class Result(models.Model):
     published = models.BooleanField(default=False, db_index=True)
     grade = models.CharField(max_length=50, blank=True, null=True)
 
+    class Meta:
+        indexes = [
+            models.Index(fields=['published', 'program', 'rank'], name='idx_res_pub_prog_rank'),
+            models.Index(fields=['published', 'member', 'points'], name='idx_res_pub_mbr_pts'),
+        ]
+
     def __str__(self):
         return f"{self.program.name} - Rank {self.rank}: {self.member.name}"
 
