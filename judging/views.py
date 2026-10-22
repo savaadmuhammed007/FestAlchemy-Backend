@@ -5,11 +5,15 @@ from .forms import MarksheetForm
 from django.contrib import messages
 from participants.models import CallingList
 from programs.models import Program
+from .utils import sync_marksheets_for_program, sync_marksheets_for_judge
 
 @role_required('judge')
 def judge_dashboard(request):
-    # Get all programs that have marksheets for this judge
-    all_programs = Program.objects.filter(marksheets__judge=request.user).distinct()
+    # Ensure marksheets exist for all called participants in this judge's programs
+    sync_marksheets_for_judge(request.user)
+    
+    # Get all programs assigned to this judge
+    all_programs = Program.objects.filter(judges=request.user).distinct()
     
     pending_programs = []
     finalized_programs = []
@@ -29,7 +33,7 @@ def judge_dashboard(request):
         program.total_sheets = total_sheets
         program.submitted_sheets = submitted_sheets
         
-        if has_pending:
+        if has_pending or total_sheets == 0:
             pending_programs.append(program)
         else:
             finalized_programs.append(program)
@@ -42,6 +46,7 @@ def judge_dashboard(request):
 @role_required('judge')
 def evaluate_list(request, program_id):
     program = get_object_or_404(Program, id=program_id)
+    sync_marksheets_for_program(program)
     marksheets = Marksheet.objects.filter(program=program, judge=request.user).select_related('member')
     
     # Enrichment for judge codes

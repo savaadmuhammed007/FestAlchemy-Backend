@@ -25,9 +25,9 @@ class MarksheetSerializer(serializers.ModelSerializer):
     def get_judge_code(self, obj):
         # Retrieve the code from the CallingList
         calling = CallingList.objects.filter(program=obj.program, member=obj.member).first()
-        if calling and '-' in calling.calling_code:
+        if calling and calling.calling_code and '-' in calling.calling_code:
             return calling.calling_code.split('-')[1]
-        return calling.calling_code if calling else "N/A"
+        return (calling.calling_code if calling and calling.calling_code else "N/A")
 
     def get_score(self, obj):
         raw = obj.marks

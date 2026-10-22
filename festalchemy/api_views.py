@@ -26,6 +26,7 @@ from participants.models import Team, Member, CallingList
 from judging.models import Marksheet
 from results.models import Result, TeamPoints
 from programs.activity_utils import log_activity, backfill_activity_logs
+from judging.utils import sync_marksheets_for_program, sync_marksheets_for_judge
 
 # Serializers
 from accounts.serializers import UserSerializer, UserProfileSerializer
@@ -318,11 +319,13 @@ class ProgramViewSet(viewsets.ModelViewSet):
         user = self.request.user
         judge_only = self.request.query_params.get('judge_only')
         if judge_only == 'true' and user.is_authenticated:
+            sync_marksheets_for_judge(user)
             qs = qs.filter(judges=user)
         return qs
 
     def perform_create(self, serializer):
         instance = serializer.save()
+        sync_marksheets_for_program(instance)
         log_activity(
             action_type='program_created',
             title=f"Event Created: {instance.name}",
@@ -332,6 +335,10 @@ class ProgramViewSet(viewsets.ModelViewSet):
             target_id=instance.id,
             metadata={'program_id': instance.id, 'program_name': instance.name}
         )
+
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        sync_marksheets_for_program(instance)
 
     def perform_destroy(self, instance):
         prog_id = instance.id
@@ -347,6 +354,21 @@ class ProgramViewSet(viewsets.ModelViewSet):
             target_id=prog_id,
             metadata={'program_id': prog_id, 'program_name': prog_name}
         )
+
+    @action(detail=False, methods=['post'], permission_classes=[IsAdminRole])
+    def sync_all_marksheets(self, request):
+        count = 0
+        # Only programs that have judges assigned can have marksheets
+        programs = list(Program.objects.filter(judges__isnull=False).distinct().prefetch_related('judges'))
+        for prog in programs:
+            count += sync_marksheets_for_program(prog)
+
+        return Response({
+            'status': 'ok',
+            'message': f'Successfully synchronized marksheets. {count} new marksheets generated across {len(programs)} events with judges.',
+            'created_marksheets_count': count,
+            'synced_programs_count': len(programs)
+        })
 
     @action(detail=False, methods=['post'], permission_classes=[IsAdminRole])
     def auto_schedule(self, request):
@@ -768,7 +790,9 @@ class MarksheetViewSet(viewsets.ModelViewSet):
         role = user.userprofile.role if hasattr(user, 'userprofile') else 'user'
         
         qs = Marksheet.objects.select_related('program', 'judge', 'member', 'member__team').all()
-        if role == 'judge':
+        if role == 'judge' or (user.is_authenticated and user.assigned_programs.exists()):
+            # Ensure marksheets exist for all called participants in this judge's programs
+            sync_marksheets_for_judge(user)
             # Judges can only see marksheets assigned to them
             qs = qs.filter(judge=user)
             program_id = self.request.query_params.get('program')
@@ -776,9 +800,12 @@ class MarksheetViewSet(viewsets.ModelViewSet):
                 qs = qs.filter(program_id=program_id)
             return qs
         elif role == 'admin':
-            # Admin can see all
+            # Admin can see all; sync if filtering by program
             program_id = self.request.query_params.get('program')
             if program_id:
+                prog = Program.objects.filter(id=program_id).first()
+                if prog:
+                    sync_marksheets_for_program(prog)
                 qs = qs.filter(program_id=program_id)
             return qs
         
@@ -802,6 +829,31 @@ class MarksheetViewSet(viewsets.ModelViewSet):
 
         data.sort(key=get_code_sort_key)
         return Response(data)
+
+    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def sync(self, request):
+        user = request.user
+        role = user.userprofile.role if hasattr(user, 'userprofile') else 'user'
+        program_id = request.data.get('program') or request.query_params.get('program')
+
+        created_count = 0
+        if program_id:
+            prog = Program.objects.filter(id=program_id).first()
+            if prog:
+                created_count = sync_marksheets_for_program(prog)
+        elif role == 'judge' or (user.is_authenticated and user.assigned_programs.exists()):
+            assigned = Program.objects.filter(judges=user)
+            for prog in assigned:
+                created_count += sync_marksheets_for_program(prog)
+        elif role == 'admin':
+            for prog in Program.objects.filter(judges__isnull=False).distinct():
+                created_count += sync_marksheets_for_program(prog)
+
+        return Response({
+            'status': 'ok',
+            'message': f'Synced successfully. {created_count} marksheets updated/created.',
+            'created_count': created_count
+        })
 
     @action(detail=True, methods=['post'])
     def evaluate(self, request, pk=None):
@@ -1234,19 +1286,12 @@ class LotCallingAPIView(APIView):
 
         if spin_all:
             callings = list(CallingList.objects.filter(program=program))
-            judges = list(program.judges.all())
             count = len(callings)
             now = timezone.now()
 
             with transaction.atomic():
                 CallingList.objects.filter(program=program).update(status='called', called_at=now)
-                if judges:
-                    marksheets = [
-                        Marksheet(program=program, judge=judge, member_id=c.member_id)
-                        for c in callings
-                        for judge in judges
-                    ]
-                    Marksheet.objects.bulk_create(marksheets, ignore_conflicts=True)
+                sync_marksheets_for_program(program)
 
             cache.delete('admin_bootstrap_data')
             cache.delete('admin_dashboard_stats')
@@ -1280,10 +1325,7 @@ class LotCallingAPIView(APIView):
                 calling.called_at = timezone.now()
                 calling.save()
             
-            judges = list(program.judges.all())
-            if judges:
-                marksheets = [Marksheet(program=program, judge=j, member=member) for j in judges]
-                Marksheet.objects.bulk_create(marksheets, ignore_conflicts=True)
+            sync_marksheets_for_program(program)
 
         cache.delete('admin_bootstrap_data')
         cache.delete('admin_dashboard_stats')
@@ -2069,6 +2111,7 @@ class UserManagementViewSet(viewsets.ModelViewSet):
                     programs = Program.objects.filter(id__in=assigned_programs)
                     for prog in programs:
                         prog.judges.add(user)
+                        sync_marksheets_for_program(prog)
 
             serializer = UserSerializer(user)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -2100,10 +2143,14 @@ class UserManagementViewSet(viewsets.ModelViewSet):
 
             # If judge role, update programs
             if hasattr(user, 'userprofile') and user.userprofile.role == 'judge' and assigned_programs is not None:
+                old_progs = list(user.assigned_programs.all())
                 user.assigned_programs.clear()
+                for old_p in old_progs:
+                    sync_marksheets_for_program(old_p)
                 programs = Program.objects.filter(id__in=assigned_programs)
                 for prog in programs:
                     prog.judges.add(user)
+                    sync_marksheets_for_program(prog)
 
         serializer = UserSerializer(user)
         return Response(serializer.data)

@@ -9,6 +9,7 @@ from .forms import ProgramForm, CategoryForm, FestSettingsForm, PosterTemplateFo
 from participants.models import CallingList, Member, Team
 from participants.forms import TeamForm, MemberForm
 from judging.models import Marksheet
+from judging.utils import sync_marksheets_for_program
 from results.models import Result, TeamPoints
 from results.forms import ResultForm
 from results.utils import generate_winner_poster
@@ -651,8 +652,7 @@ def call_participant(request, program_id):
         calling, _ = CallingList.objects.get_or_create(program=program, member=member)
         calling.status = 'called'
         calling.save()
-        for judge in program.judges.all():
-            Marksheet.objects.get_or_create(program=program, judge=judge, member=member)
+        sync_marksheets_for_program(program)
             
         import json
         from django.http import JsonResponse
@@ -850,6 +850,7 @@ def judge_add(request):
                     programs = form.cleaned_data['assigned_programs']
                     for prog in programs:
                         prog.judges.add(user)
+                        sync_marksheets_for_program(prog)
                 messages.success(request, f"Judge '{user.username}' registered successfully.")
                 return redirect('/admin-panel/settings/?tab=users')
             except Exception as e:
@@ -878,11 +879,15 @@ def user_edit(request, user_id):
                     user.save()
                     
                     if is_judge:
+                        old_progs = list(user.assigned_programs.all())
                         # Clear old programs and add new ones
                         user.assigned_programs.clear()
+                        for old_p in old_progs:
+                            sync_marksheets_for_program(old_p)
                         programs = form.cleaned_data['assigned_programs']
                         for prog in programs:
                             prog.judges.add(user)
+                            sync_marksheets_for_program(prog)
                             
                 messages.success(request, f"User '{user.username}' updated successfully.")
                 return redirect('/admin-panel/settings/?tab=users')
@@ -931,6 +936,7 @@ def judge_assignment_edit(request, program_id):
     form = JudgeAssignmentForm(request.POST or None, instance=program)
     if request.method == 'POST' and form.is_valid():
         form.save()
+        sync_marksheets_for_program(program)
         messages.success(request, f"Judges assigned to '{program.name}'.")
         return redirect('judge_assignment_list')
     return render(request, 'programs/generic_form.html', {
