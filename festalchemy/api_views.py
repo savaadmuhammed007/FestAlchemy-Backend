@@ -2051,23 +2051,29 @@ class UserManagementViewSet(viewsets.ModelViewSet):
         if User.objects.filter(username=username).exists():
             return Response({'error': 'Username already exists.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        with transaction.atomic():
-            user = User.objects.create_user(
-                username=username,
-                password=password,
-                first_name=first_name,
-                last_name=last_name
-            )
-            UserProfile.objects.create(user=user, role='judge')
-            
-            # Assign programs
-            if assigned_programs:
-                programs = Program.objects.filter(id__in=assigned_programs)
-                for prog in programs:
-                    prog.judges.add(user)
+        try:
+            with transaction.atomic():
+                user = User.objects.create_user(
+                    username=username,
+                    password=password,
+                    first_name=first_name,
+                    last_name=last_name
+                )
+                UserProfile.objects.update_or_create(
+                    user=user,
+                    defaults={'role': 'judge'}
+                )
+                
+                # Assign programs
+                if assigned_programs:
+                    programs = Program.objects.filter(id__in=assigned_programs)
+                    for prog in programs:
+                        prog.judges.add(user)
 
-        serializer = UserSerializer(user)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+            serializer = UserSerializer(user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=['post'])
     def edit_user(self, request, pk=None):

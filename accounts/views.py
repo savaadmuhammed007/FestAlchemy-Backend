@@ -30,7 +30,7 @@ def signup(request):
         form = UserCreationForm(request.POST)
         if form.is_valid():
             user = form.save()
-            UserProfile.objects.create(user=user, role='user') # default role
+            UserProfile.objects.update_or_create(user=user, defaults={'role': 'user'}) # default role
             messages.success(request, 'Account created successfully! You can now log in.')
             return redirect('login')
     else:

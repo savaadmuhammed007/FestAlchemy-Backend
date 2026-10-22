@@ -845,7 +845,7 @@ def judge_add(request):
                         first_name=form.cleaned_data['first_name'],
                         last_name=form.cleaned_data['last_name']
                     )
-                    UserProfile.objects.create(user=user, role='judge')
+                    UserProfile.objects.update_or_create(user=user, defaults={'role': 'judge'})
                     # Update assigned programs
                     programs = form.cleaned_data['assigned_programs']
                     for prog in programs:

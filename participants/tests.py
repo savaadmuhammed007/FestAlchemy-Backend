@@ -8,7 +8,7 @@ class CallingListPregenerationTestCase(TestCase):
     def setUp(self):
         # Create user & profile
         self.user = User.objects.create_user(username='admin', password='password')
-        self.profile = UserProfile.objects.create(user=self.user, role='admin')
+        self.profile, _ = UserProfile.objects.update_or_create(user=self.user, defaults={'role': 'admin'})
 
         # Create settings, category, program
         self.fest = FestSettings.objects.create(fest_name="Test Fest", year=2026)
