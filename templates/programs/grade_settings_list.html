@@ -6,7 +6,7 @@
 
 {% block content %}
 <div class="glass-panel">
-    <p style="color:var(--text-muted); font-size:.85rem; margin-bottom: 1.2rem;">Define grading rules for programs. If no rules are set, results compute points using the default rank points.</p>
+    <p style="color:var(--text-muted); font-size:.85rem; margin-bottom: 1.2rem;">Define custom grading rules for programs. If no custom rules are set, results compute points using the standard grade scale (A+ &ge; 90%, A &ge; 70%, B &ge; 60%, C &ge; 50%) and prize bonuses.</p>
     {% if programs %}
     <div class="table-responsive">
     <table>
@@ -39,7 +39,7 @@
                             {% endfor %}
                         </div>
                     {% else %}
-                        <span class="text-muted" style="font-size: 0.85rem;"><i class="bi bi-info-circle"></i> Using Rank Points System</span>
+                        <span class="text-muted" style="font-size: 0.85rem;"><i class="bi bi-info-circle"></i> Using Standard Grade & Prize System</span>
                     {% endif %}
                 </td>
                 <td style="text-align: right;">

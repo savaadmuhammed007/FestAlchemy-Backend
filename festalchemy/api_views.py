@@ -38,6 +38,7 @@ from programs.serializers import (
 from participants.serializers import TeamSerializer, MemberSerializer, CallingListSerializer
 from judging.serializers import MarksheetSerializer
 from results.serializers import ResultSerializer, TeamPointsSerializer
+from results.scoring import determine_grade, calculate_result_points
 
 class IsAdminRole(permissions.BasePermission):
     def has_permission(self, request, view):
@@ -938,29 +939,6 @@ class ResultViewSet(viewsets.ModelViewSet):
         results.sort(key=lambda r: r.total_marks, reverse=True)
         grade_rules = list(program.grade_settings.all())
         
-        for r in results:
-            scaled = (r.total_marks / program.max_marks) * 100 if program.max_marks > 0 else r.total_marks
-            
-            grade_name = None
-            for rule in grade_rules:
-                if scaled >= rule.min_marks:
-                    grade_name = rule.grade_name
-                    break
-            
-            if not grade_name:
-                if scaled >= 95: grade_name = "A+"
-                elif scaled >= 85: grade_name = "A"
-                elif scaled >= 75: grade_name = "B"
-                elif scaled >= 65: grade_name = "C"
-                elif scaled >= 50: grade_name = "D"
-            
-            r.grade = grade_name
-            
-        grade_counts = {}
-        for r in results:
-            if r.grade:
-                grade_counts[r.grade] = grade_counts.get(r.grade, 0) + 1
-                
         with transaction.atomic():
             current_rank = 0
             prev_marks = None
@@ -970,35 +948,16 @@ class ResultViewSet(viewsets.ModelViewSet):
                     current_rank += 1
                 prev_marks = rounded_marks
                 r.rank = current_rank
-                
-                pts = 0
-                if r.grade:
-                    for rule in grade_rules:
-                        if rule.grade_name == r.grade:
-                            pts = rule.points
-                            break
-                
-                if pts == 0 and r.grade:
-                    if program.type == 'group':
-                        if r.grade == "A+": pts = 20
-                        elif r.grade == "A": pts = 15
-                        elif r.grade == "B": pts = 10
-                        elif r.grade == "C": pts = 5
-                        elif r.grade == "D": pts = 3
-                    else:
-                        if r.grade == "A+": pts = 10
-                        elif r.grade == "A": pts = 8
-                        elif r.grade == "B": pts = 6
-                        elif r.grade == "C": pts = 4
-                        elif r.grade == "D": pts = 2
-                
-                if r.grade and grade_counts.get(r.grade, 0) > 1:
-                    if r.rank == 1:
-                        pts += 3
-                    elif r.rank == 2:
-                        pts += 1
-                        
-                r.points = pts
+
+                scaled = (r.total_marks / program.max_marks) * 100 if program.max_marks > 0 else r.total_marks
+                r.grade = determine_grade(scaled, custom_grade_rules=grade_rules)
+                r.points = calculate_result_points(
+                    grade_name=r.grade,
+                    rank=r.rank,
+                    program_type=program.type,
+                    custom_grade_rules=grade_rules
+                )
+
             Result.objects.bulk_update(results, ['rank', 'grade', 'points'])
                 
         from results.utils import recalculate_team_points
@@ -1057,55 +1016,21 @@ class ResultViewSet(viewsets.ModelViewSet):
             prev_marks = rounded_marks
 
             scaled = (avg_marks / program.max_marks) * 100 if program.max_marks > 0 else avg_marks
-            
-            grade_name = None
-            for rule in grade_rules:
-                if scaled >= rule.min_marks:
-                    grade_name = rule.grade_name
-                    break
-            
-            if not grade_name:
-                if scaled >= 95: grade_name = "A+"
-                elif scaled >= 85: grade_name = "A"
-                elif scaled >= 75: grade_name = "B"
-                elif scaled >= 65: grade_name = "C"
-                elif scaled >= 50: grade_name = "D"
-
-            pts = 0
-            if grade_name:
-                for rule in grade_rules:
-                    if rule.grade_name == grade_name:
-                        pts = rule.points
-                        break
-            
-            if pts == 0 and grade_name:
-                if program.type == 'group':
-                    if grade_name == "A+": pts = 20
-                    elif grade_name == "A": pts = 15
-                    elif grade_name == "B": pts = 10
-                    elif grade_name == "C": pts = 5
-                    elif grade_name == "D": pts = 3
-                else:
-                    if grade_name == "A+": pts = 10
-                    elif grade_name == "A": pts = 8
-                    elif grade_name == "B": pts = 6
-                    elif grade_name == "C": pts = 4
-                    elif grade_name == "D": pts = 2
+            grade_name = determine_grade(scaled, custom_grade_rules=grade_rules)
+            pts = calculate_result_points(
+                grade_name=grade_name,
+                rank=current_rank,
+                program_type=program.type,
+                custom_grade_rules=grade_rules
+            )
 
             computed_entries.append({
                 'member_id': member_id,
                 'avg_marks': avg_marks,
                 'rank': current_rank,
                 'grade_name': grade_name,
-                'base_pts': pts
+                'pts': pts
             })
-
-        # Count frequencies of each grade
-        grade_counts = {}
-        for entry in computed_entries:
-            g = entry['grade_name']
-            if g:
-                grade_counts[g] = grade_counts.get(g, 0) + 1
 
         # Bulk fetch calling codes mapping to avoid N+1 queries
         calling_map = {}
@@ -1119,14 +1044,7 @@ class ResultViewSet(viewsets.ModelViewSet):
             avg_marks = entry['avg_marks']
             rank_idx = entry['rank']
             grade_name = entry['grade_name']
-            pts = entry['base_pts']
-
-            # Position bonus points (only if they have a grade and that grade is shared with others)
-            if grade_name and grade_counts.get(grade_name, 0) > 1:
-                if rank_idx == 1:
-                    pts += 3
-                elif rank_idx == 2:
-                    pts += 1
+            pts = entry['pts']
 
             new_results.append(Result(
                 program=program,

@@ -13,6 +13,7 @@ from judging.utils import sync_marksheets_for_program
 from results.models import Result, TeamPoints
 from results.forms import ResultForm
 from results.utils import generate_winner_poster
+from results.scoring import determine_grade, calculate_result_points
 from django.db.models import Exists, OuterRef, Sum, Count
 
 
@@ -511,67 +512,32 @@ def compute_results(request, program_id):
     # Get program-specific grading rules
     grade_rules = list(program.grade_settings.all())
 
-    # Pre-compute entries, grades, and base points
+    # Pre-compute entries, grades, and points with dense tie-rank handling
     computed_entries = []
-    for rank_idx, (member_id, avg_marks) in enumerate(ranked, start=1):
-        scaled = (avg_marks / program.max_marks) * 100 if program.max_marks > 0 else avg_marks
-        
-        # Grade calculation
-        if scaled >= 95:
-            grade_name = "A+"
-        elif scaled >= 85:
-            grade_name = "A"
-        elif scaled >= 75:
-            grade_name = "B"
-        elif scaled >= 65:
-            grade_name = "C"
-        elif scaled >= 50:
-            grade_name = "D"
-        else:
-            grade_name = None
+    current_rank = 0
+    prev_marks = None
+    for member_id, avg_marks in ranked:
+        rounded_marks = round(avg_marks, 2)
+        if prev_marks is None or rounded_marks != prev_marks:
+            current_rank += 1
+        prev_marks = rounded_marks
 
-        # Base points calculation
-        if program.type == 'group':
-            if grade_name == "A+":
-                pts = 20
-            elif grade_name == "A":
-                pts = 15
-            elif grade_name == "B":
-                pts = 10
-            elif grade_name == "C":
-                pts = 5
-            elif grade_name == "D":
-                pts = 3
-            else:
-                pts = 0
-        else:  # individual / single
-            if grade_name == "A+":
-                pts = 10
-            elif grade_name == "A":
-                pts = 8
-            elif grade_name == "B":
-                pts = 6
-            elif grade_name == "C":
-                pts = 4
-            elif grade_name == "D":
-                pts = 2
-            else:
-                pts = 0
+        scaled = (avg_marks / program.max_marks) * 100 if program.max_marks > 0 else avg_marks
+        grade_name = determine_grade(scaled, custom_grade_rules=grade_rules)
+        pts = calculate_result_points(
+            grade_name=grade_name,
+            rank=current_rank,
+            program_type=program.type,
+            custom_grade_rules=grade_rules
+        )
 
         computed_entries.append({
             'member_id': member_id,
             'avg_marks': avg_marks,
-            'rank': rank_idx,
+            'rank': current_rank,
             'grade_name': grade_name,
-            'base_pts': pts
+            'pts': pts
         })
-
-    # Count frequencies of each grade
-    grade_counts = {}
-    for entry in computed_entries:
-        g = entry['grade_name']
-        if g:
-            grade_counts[g] = grade_counts.get(g, 0) + 1
 
     with transaction.atomic():
         Result.objects.filter(program=program).delete()
@@ -580,14 +546,7 @@ def compute_results(request, program_id):
             avg_marks = entry['avg_marks']
             rank_idx = entry['rank']
             grade_name = entry['grade_name']
-            pts = entry['base_pts']
-
-            # Position bonus points (only if they have a grade and that grade is shared with others)
-            if grade_name and grade_counts.get(grade_name, 0) > 1:
-                if rank_idx == 1:
-                    pts += 3
-                elif rank_idx == 2:
-                    pts += 1
+            pts = entry['pts']
 
             # Get judge_code from CallingList
             calling = CallingList.objects.filter(program=program, member_id=member_id).first()
