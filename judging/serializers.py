@@ -23,11 +23,17 @@ class MarksheetSerializer(serializers.ModelSerializer):
         read_only_fields = ['judge_code', 'marks']
 
     def get_judge_code(self, obj):
-        # Retrieve the code from the CallingList
-        calling = CallingList.objects.filter(program=obj.program, member=obj.member).first()
-        if calling and calling.calling_code and '-' in calling.calling_code:
-            return calling.calling_code.split('-')[1]
-        return (calling.calling_code if calling and calling.calling_code else "N/A")
+        # Use batch context map if available to eliminate N+1 queries
+        calling_map = self.context.get('calling_map') if self.context else None
+        if calling_map is not None:
+            raw_code = calling_map.get((obj.program_id, obj.member_id))
+        else:
+            calling = CallingList.objects.filter(program_id=obj.program_id, member_id=obj.member_id).first()
+            raw_code = calling.calling_code if calling else None
+
+        if raw_code and '-' in raw_code:
+            return raw_code.split('-')[1]
+        return raw_code or "N/A"
 
     def get_score(self, obj):
         raw = obj.marks

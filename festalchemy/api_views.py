@@ -315,13 +315,13 @@ class ProgramViewSet(viewsets.ModelViewSet):
     permission_classes = [ReadOnlyOrAdmin]
 
     def get_queryset(self):
-        qs = Program.objects.select_related('category').prefetch_related('judges', 'results', 'calling_lists', 'registered_members', 'marksheets').order_by('schedule')
         user = self.request.user
         judge_only = self.request.query_params.get('judge_only')
         if judge_only == 'true' and user.is_authenticated:
-            sync_marksheets_for_judge(user)
-            qs = qs.filter(judges=user)
-        return qs
+            qs = Program.objects.filter(judges=user)
+        else:
+            qs = Program.objects.all()
+        return qs.select_related('category').prefetch_related('judges', 'results', 'calling_lists', 'registered_members', 'marksheets').order_by('schedule')
 
     def perform_create(self, serializer):
         instance = serializer.save()
@@ -791,29 +791,32 @@ class MarksheetViewSet(viewsets.ModelViewSet):
         
         qs = Marksheet.objects.select_related('program', 'judge', 'member', 'member__team').all()
         if role == 'judge' or (user.is_authenticated and user.assigned_programs.exists()):
-            # Ensure marksheets exist for all called participants in this judge's programs
-            sync_marksheets_for_judge(user)
-            # Judges can only see marksheets assigned to them
             qs = qs.filter(judge=user)
             program_id = self.request.query_params.get('program')
             if program_id:
                 qs = qs.filter(program_id=program_id)
             return qs
         elif role == 'admin':
-            # Admin can see all; sync if filtering by program
             program_id = self.request.query_params.get('program')
             if program_id:
-                prog = Program.objects.filter(id=program_id).first()
-                if prog:
-                    sync_marksheets_for_program(prog)
                 qs = qs.filter(program_id=program_id)
             return qs
         
         return Marksheet.objects.none()
 
     def list(self, request, *args, **kwargs):
-        queryset = self.filter_queryset(self.get_queryset())
-        serializer = self.get_serializer(queryset, many=True)
+        queryset = list(self.filter_queryset(self.get_queryset()))
+
+        # Batch prefetch all calling codes in a single query to eliminate N+1 latency
+        prog_ids = {s.program_id for s in queryset}
+        mem_ids = {s.member_id for s in queryset}
+        calling_map = {}
+        if prog_ids and mem_ids:
+            from participants.models import CallingList
+            for c in CallingList.objects.filter(program_id__in=prog_ids, member_id__in=mem_ids).values('program_id', 'member_id', 'calling_code'):
+                calling_map[(c['program_id'], c['member_id'])] = c['calling_code']
+
+        serializer = self.get_serializer(queryset, many=True, context={'calling_map': calling_map, 'request': request})
         data = list(serializer.data)
 
         def get_code_sort_key(x):

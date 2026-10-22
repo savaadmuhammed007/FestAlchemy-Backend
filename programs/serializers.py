@@ -46,6 +46,8 @@ class ProgramSerializer(serializers.ModelSerializer):
     lot_completed = serializers.SerializerMethodField(read_only=True)
     has_marksheets = serializers.SerializerMethodField(read_only=True)
     lot_spun_at = serializers.SerializerMethodField(read_only=True)
+    total_sheets = serializers.SerializerMethodField(read_only=True)
+    submitted_sheets = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Program
@@ -54,7 +56,8 @@ class ProgramSerializer(serializers.ModelSerializer):
             'duration', 'calculated_duration_minutes', 'end_time', 'participant_limit',
             'point_weightage_1st', 'point_weightage_2nd', 'point_weightage_3rd', 'max_marks', 
             'schedule', 'venue', 'judges', 'judges_details', 'registered_members_count',
-            'has_results', 'is_published', 'lot_completed', 'has_marksheets', 'lot_spun_at', 'fest'
+            'has_results', 'is_published', 'lot_completed', 'has_marksheets', 'lot_spun_at',
+            'total_sheets', 'submitted_sheets', 'fest'
         ]
         extra_kwargs = {
             'judges': {'required': False}
@@ -147,6 +150,24 @@ class ProgramSerializer(serializers.ModelSerializer):
                 val = called.called_at or called.created_at
                 return val.isoformat() if val else None
         return None
+
+    def get_total_sheets(self, obj):
+        request = self.context.get('request')
+        user = request.user if request and request.user.is_authenticated else None
+        if user and getattr(user, 'userprofile', None) and user.userprofile.role == 'judge':
+            if '_prefetched_objects_cache' in obj.__dict__ and 'marksheets' in obj._prefetched_objects_cache:
+                return sum(1 for m in obj.marksheets.all() if m.judge_id == user.id)
+            return obj.marksheets.filter(judge=user).count()
+        return 0
+
+    def get_submitted_sheets(self, obj):
+        request = self.context.get('request')
+        user = request.user if request and request.user.is_authenticated else None
+        if user and getattr(user, 'userprofile', None) and user.userprofile.role == 'judge':
+            if '_prefetched_objects_cache' in obj.__dict__ and 'marksheets' in obj._prefetched_objects_cache:
+                return sum(1 for m in obj.marksheets.all() if m.judge_id == user.id and m.submitted)
+            return obj.marksheets.filter(judge=user, submitted=True).count()
+        return 0
 
 class PosterTemplateSerializer(serializers.ModelSerializer):
     program_name = serializers.ReadOnlyField(source='program.name')
