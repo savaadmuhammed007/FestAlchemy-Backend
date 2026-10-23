@@ -1555,9 +1555,11 @@ class PublicDashboardStatsAPIView(APIView):
         if fest_data:
             fest_data['publish_team_standings'] = publish_standings
 
-        # Categories
+        # Categories sorted by preferred order: A'ala, Sufla, General
+        PREFERRED_CATEGORY_ORDER = ["A'ala", "Sufla", "General"]
         cats = Category.objects.annotate(programs_count=Count('programs')).all()
         cats_data = CategorySerializer(cats, many=True).data
+        cats_data.sort(key=lambda c: PREFERRED_CATEGORY_ORDER.index(c['name']) if c['name'] in PREFERRED_CATEGORY_ORDER else 999)
         
         # Schedule (with select_related and prefetch_related to avoid N+1 queries)
         progs = Program.objects.select_related('category').prefetch_related('judges', 'results', 'calling_lists', 'registered_members', 'marksheets').all().order_by('schedule')
@@ -1591,10 +1593,40 @@ class PublicDashboardStatsAPIView(APIView):
             teampoints = TeamPoints.objects.select_related('team').order_by('-total_points')
             teampoints_data = TeamPointsSerializer(teampoints, many=True).data
         
-        # Individual Leaderboard — top 20 per category (single batch aggregation)
+        # Overall Top Performers across all single events with dense tie-ranking
+        top_performers_raw = list(
+            Result.objects.filter(published=True, program__type='single')
+            .values(
+                'member__id', 'member__name', 'member__chest_no',
+                'member__team__name', 'member__category__name'
+            )
+            .annotate(total_points=Sum('points'), events_count=Count('id'))
+            .order_by('-total_points')[:30]
+        )
+
+        top_performers = []
+        curr_rank = 0
+        prev_pts = None
+        for p in top_performers_raw:
+            pts = p['total_points']
+            if prev_pts is None or pts != prev_pts:
+                curr_rank += 1
+                prev_pts = pts
+            top_performers.append({
+                'member_id': p['member__id'],
+                'member_name': p['member__name'],
+                'chest_no': p['member__chest_no'],
+                'team_name': p['member__team__name'],
+                'category_name': p['member__category__name'],
+                'total_points': pts,
+                'events_count': p['events_count'],
+                'rank': curr_rank,
+            })
+
+        # Individual Leaderboard — top 25 per category (single batch aggregation, excluding General)
         all_performers = (
             Result.objects.filter(published=True, program__type='single')
-            .values('member__category__id', 'member__category__name', 'member__id', 'member__name', 'member__team__name')
+            .values('member__category__id', 'member__category__name', 'member__id', 'member__name', 'member__chest_no', 'member__team__name')
             .annotate(total=Sum('points'), events=Count('id'))
             .order_by('member__category__id', '-total')
         )
@@ -1603,9 +1635,11 @@ class PublicDashboardStatsAPIView(APIView):
         for item in all_performers:
             cid = item['member__category__id']
             cname = item['member__category__name']
+            if not cname or str(cname).strip().lower() == 'general':
+                continue
             if cid not in cat_groups:
                 cat_groups[cid] = {'name': cname, 'items': []}
-            if len(cat_groups[cid]['items']) < 20:
+            if len(cat_groups[cid]['items']) < 25:
                 cat_groups[cid]['items'].append(item)
 
         top_member_ids = [
@@ -1634,18 +1668,38 @@ class PublicDashboardStatsAPIView(APIView):
 
         individual_data = []
         for cat_id, group in cat_groups.items():
+            if not group.get('name') or str(group['name']).strip().lower() == 'general':
+                continue
+            cat_performers = []
+            c_rank = 0
+            c_prev = None
+            for item in group['items']:
+                pts = item['total']
+                if c_prev is None or pts != c_prev:
+                    c_rank += 1
+                    c_prev = pts
+                cat_performers.append({
+                    'member_id': item['member__id'],
+                    'member_name': item['member__name'],
+                    'chest_no': item.get('member__chest_no'),
+                    'team_name': item['member__team__name'],
+                    'total_points': pts,
+                    'rank': c_rank,
+                    'events_count': item['events'],
+                    'program_breakdown': prog_map.get(item['member__id'], []),
+                })
+
             individual_data.append({
                 'category_id': cat_id,
                 'category_name': group['name'],
-                'performers': [{
-                    'member_id': item['member__id'],
-                    'member_name': item['member__name'],
-                    'team_name': item['member__team__name'],
-                    'total_points': item['total'],
-                    'events_count': item['events'],
-                    'program_breakdown': prog_map.get(item['member__id'], []),
-                } for item in group['items']],
+                'performers': cat_performers,
             })
+
+        # Ensure individual_data categories follow PREFERRED_CATEGORY_ORDER
+        individual_data.sort(
+            key=lambda c: PREFERRED_CATEGORY_ORDER.index(c['category_name'])
+            if c['category_name'] in PREFERRED_CATEGORY_ORDER else 999
+        )
 
         # Programs with results ordered by latest published first (using lean values_list)
         published_results_qs = (
@@ -1690,6 +1744,7 @@ class PublicDashboardStatsAPIView(APIView):
             'schedule': progs_data,
             'leaderboard': teampoints_data,
             'individual_leaderboard': individual_data,
+            'top_performers': top_performers,
             'programs_with_results': progs_with_results_data,
             'recent_results': recent_results,
             'stats': {
