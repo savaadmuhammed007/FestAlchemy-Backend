@@ -162,6 +162,8 @@ class FestSettingsViewSet(viewsets.ModelViewSet):
         updates = {}
         if 'publish_team_standings' in self.request.data:
             updates['publish_team_standings'] = serializer.validated_data.get('publish_team_standings', instance.publish_team_standings)
+        if 'publish_top_performers' in self.request.data:
+            updates['publish_top_performers'] = serializer.validated_data.get('publish_top_performers', instance.publish_top_performers)
         if 'published_standings_limit' in self.request.data:
             updates['published_standings_limit'] = serializer.validated_data.get('published_standings_limit', instance.published_standings_limit)
         if updates:
@@ -903,6 +905,7 @@ class MarksheetViewSet(viewsets.ModelViewSet):
                 }
             )
         marksheet.save()
+        invalidate_public_stats_cache()
 
         serializer = MarksheetSerializer(marksheet)
         return Response(serializer.data)
@@ -924,15 +927,22 @@ class ResultViewSet(viewsets.ModelViewSet):
             
         return qs
 
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        self.update_and_recalculate_rankings(instance.program)
+        invalidate_public_stats_cache()
+
     def perform_update(self, serializer):
         instance = serializer.save()
         if 'total_marks' in serializer.validated_data:
             self.update_and_recalculate_rankings(instance.program)
+        invalidate_public_stats_cache()
 
     def perform_destroy(self, instance):
         program = instance.program
         instance.delete()
         self.update_and_recalculate_rankings(program)
+        invalidate_public_stats_cache()
 
     def update_and_recalculate_rankings(self, program):
         results = list(Result.objects.filter(program=program))
@@ -962,6 +972,7 @@ class ResultViewSet(viewsets.ModelViewSet):
                 
         from results.utils import recalculate_team_points
         recalculate_team_points()
+        invalidate_public_stats_cache()
 
     @action(detail=False, methods=['post'], permission_classes=[IsAdminRole])
     def compute(self, request):
@@ -1063,6 +1074,7 @@ class ResultViewSet(viewsets.ModelViewSet):
 
         from results.utils import recalculate_team_points
         recalculate_team_points()
+        invalidate_public_stats_cache()
 
         # Fetch and return computed results
         computed = Result.objects.filter(program=program).order_by('rank')
@@ -1541,19 +1553,25 @@ class PublicDashboardStatsAPIView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
-        cached_data = cache.get('public_dashboard_stats')
-        if cached_data:
-            return Response(cached_data)
+        params = getattr(request, 'query_params', getattr(request, 'GET', {}))
+        headers = getattr(request, 'headers', {})
+        no_cache = params.get('nocache') == '1' or headers.get('Cache-Control') == 'no-cache'
+        if not no_cache:
+            cached_data = cache.get('public_dashboard_stats')
+            if cached_data:
+                return Response(cached_data)
 
         # Fest Settings
         fest = FestSettings.objects.first()
         fest_data = FestSettingsSerializer(fest).data if fest else None
         
-        # Global publish_team_standings check
+        # Global publish_team_standings and publish_top_performers checks
         publish_standings = not FestSettings.objects.filter(publish_team_standings=False).exists()
+        publish_top_performers = not FestSettings.objects.filter(publish_top_performers=False).exists()
 
         if fest_data:
             fest_data['publish_team_standings'] = publish_standings
+            fest_data['publish_top_performers'] = publish_top_performers
 
         # Categories sorted by preferred order: A'ala, Sufla, General
         PREFERRED_CATEGORY_ORDER = ["A'ala", "Sufla", "General"]
@@ -1593,113 +1611,117 @@ class PublicDashboardStatsAPIView(APIView):
             teampoints = TeamPoints.objects.select_related('team').order_by('-total_points')
             teampoints_data = TeamPointsSerializer(teampoints, many=True).data
         
-        # Overall Top Performers across all single events with dense tie-ranking
-        top_performers_raw = list(
-            Result.objects.filter(published=True, program__type='single')
-            .values(
-                'member__id', 'member__name', 'member__chest_no',
-                'member__team__name', 'member__category__name'
+        # Overall Top Performers & Individual Leaderboard
+        if not publish_top_performers:
+            top_performers = []
+            individual_data = []
+        else:
+            top_performers_raw = list(
+                Result.objects.filter(published=True, program__type='single')
+                .values(
+                    'member__id', 'member__name', 'member__chest_no',
+                    'member__team__name', 'member__category__name'
+                )
+                .annotate(total_points=Sum('points'), events_count=Count('id'))
+                .order_by('-total_points')[:30]
             )
-            .annotate(total_points=Sum('points'), events_count=Count('id'))
-            .order_by('-total_points')[:30]
-        )
 
-        top_performers = []
-        curr_rank = 0
-        prev_pts = None
-        for p in top_performers_raw:
-            pts = p['total_points']
-            if prev_pts is None or pts != prev_pts:
-                curr_rank += 1
-                prev_pts = pts
-            top_performers.append({
-                'member_id': p['member__id'],
-                'member_name': p['member__name'],
-                'chest_no': p['member__chest_no'],
-                'team_name': p['member__team__name'],
-                'category_name': p['member__category__name'],
-                'total_points': pts,
-                'events_count': p['events_count'],
-                'rank': curr_rank,
-            })
-
-        # Individual Leaderboard — top 25 per category (single batch aggregation, excluding General)
-        all_performers = (
-            Result.objects.filter(published=True, program__type='single')
-            .values('member__category__id', 'member__category__name', 'member__id', 'member__name', 'member__chest_no', 'member__team__name')
-            .annotate(total=Sum('points'), events=Count('id'))
-            .order_by('member__category__id', '-total')
-        )
-
-        cat_groups = {}
-        for item in all_performers:
-            cid = item['member__category__id']
-            cname = item['member__category__name']
-            if not cname or str(cname).strip().lower() == 'general':
-                continue
-            if cid not in cat_groups:
-                cat_groups[cid] = {'name': cname, 'items': []}
-            if len(cat_groups[cid]['items']) < 25:
-                cat_groups[cid]['items'].append(item)
-
-        top_member_ids = [
-            item['member__id']
-            for group in cat_groups.values()
-            for item in group['items']
-        ]
-
-        prog_map = {}
-        if top_member_ids:
-            per_prog = (
-                Result.objects.filter(published=True, member__id__in=top_member_ids, program__type='single')
-                .values('member__id', 'program__id', 'program__name', 'points', 'rank')
-                .order_by('member__id', 'program__name')
-            )
-            for r in per_prog:
-                mid = r['member__id']
-                if mid not in prog_map:
-                    prog_map[mid] = []
-                prog_map[mid].append({
-                    'program_id': r['program__id'],
-                    'program_name': r['program__name'],
-                    'points': r['points'],
-                    'rank': r['rank'],
-                })
-
-        individual_data = []
-        for cat_id, group in cat_groups.items():
-            if not group.get('name') or str(group['name']).strip().lower() == 'general':
-                continue
-            cat_performers = []
-            c_rank = 0
-            c_prev = None
-            for item in group['items']:
-                pts = item['total']
-                if c_prev is None or pts != c_prev:
-                    c_rank += 1
-                    c_prev = pts
-                cat_performers.append({
-                    'member_id': item['member__id'],
-                    'member_name': item['member__name'],
-                    'chest_no': item.get('member__chest_no'),
-                    'team_name': item['member__team__name'],
+            top_performers = []
+            curr_rank = 0
+            prev_pts = None
+            for p in top_performers_raw:
+                pts = p['total_points']
+                if prev_pts is None or pts != prev_pts:
+                    curr_rank += 1
+                    prev_pts = pts
+                top_performers.append({
+                    'member_id': p['member__id'],
+                    'member_name': p['member__name'],
+                    'chest_no': p['member__chest_no'],
+                    'team_name': p['member__team__name'],
+                    'category_name': p['member__category__name'],
                     'total_points': pts,
-                    'rank': c_rank,
-                    'events_count': item['events'],
-                    'program_breakdown': prog_map.get(item['member__id'], []),
+                    'events_count': p['events_count'],
+                    'rank': curr_rank,
                 })
 
-            individual_data.append({
-                'category_id': cat_id,
-                'category_name': group['name'],
-                'performers': cat_performers,
-            })
+            # Individual Leaderboard — top 25 per category (single batch aggregation, excluding General)
+            all_performers = (
+                Result.objects.filter(published=True, program__type='single')
+                .values('member__category__id', 'member__category__name', 'member__id', 'member__name', 'member__chest_no', 'member__team__name')
+                .annotate(total=Sum('points'), events=Count('id'))
+                .order_by('member__category__id', '-total')
+            )
 
-        # Ensure individual_data categories follow PREFERRED_CATEGORY_ORDER
-        individual_data.sort(
-            key=lambda c: PREFERRED_CATEGORY_ORDER.index(c['category_name'])
-            if c['category_name'] in PREFERRED_CATEGORY_ORDER else 999
-        )
+            cat_groups = {}
+            for item in all_performers:
+                cid = item['member__category__id']
+                cname = item['member__category__name']
+                if not cname or str(cname).strip().lower() == 'general':
+                    continue
+                if cid not in cat_groups:
+                    cat_groups[cid] = {'name': cname, 'items': []}
+                if len(cat_groups[cid]['items']) < 25:
+                    cat_groups[cid]['items'].append(item)
+
+            top_member_ids = [
+                item['member__id']
+                for group in cat_groups.values()
+                for item in group['items']
+            ]
+
+            prog_map = {}
+            if top_member_ids:
+                per_prog = (
+                    Result.objects.filter(published=True, member__id__in=top_member_ids, program__type='single')
+                    .values('member__id', 'program__id', 'program__name', 'points', 'rank')
+                    .order_by('member__id', 'program__name')
+                )
+                for r in per_prog:
+                    mid = r['member__id']
+                    if mid not in prog_map:
+                        prog_map[mid] = []
+                    prog_map[mid].append({
+                        'program_id': r['program__id'],
+                        'program_name': r['program__name'],
+                        'points': r['points'],
+                        'rank': r['rank'],
+                    })
+
+            individual_data = []
+            for cat_id, group in cat_groups.items():
+                if not group.get('name') or str(group['name']).strip().lower() == 'general':
+                    continue
+                cat_performers = []
+                c_rank = 0
+                c_prev = None
+                for item in group['items']:
+                    pts = item['total']
+                    if c_prev is None or pts != c_prev:
+                        c_rank += 1
+                        c_prev = pts
+                    cat_performers.append({
+                        'member_id': item['member__id'],
+                        'member_name': item['member__name'],
+                        'chest_no': item.get('member__chest_no'),
+                        'team_name': item['member__team__name'],
+                        'total_points': pts,
+                        'rank': c_rank,
+                        'events_count': item['events'],
+                        'program_breakdown': prog_map.get(item['member__id'], []),
+                    })
+
+                individual_data.append({
+                    'category_id': cat_id,
+                    'category_name': group['name'],
+                    'performers': cat_performers,
+                })
+
+            # Ensure individual_data categories follow PREFERRED_CATEGORY_ORDER
+            individual_data.sort(
+                key=lambda c: PREFERRED_CATEGORY_ORDER.index(c['category_name'])
+                if c['category_name'] in PREFERRED_CATEGORY_ORDER else 999
+            )
 
         # Programs with results ordered by latest published first (using lean values_list)
         published_results_qs = (
@@ -1756,7 +1778,7 @@ class PublicDashboardStatsAPIView(APIView):
             }
         }
 
-        cache.set('public_dashboard_stats', response_data, 300)
+        cache.set('public_dashboard_stats', response_data, 60)
         return Response(response_data)
 
 # ────────────────────────────────────────────────────────
