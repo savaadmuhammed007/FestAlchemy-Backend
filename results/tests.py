@@ -53,9 +53,12 @@ class ScoringEngineTests(unittest.TestCase):
         self.assertEqual(calculate_result_points("C", rank=3, program_type="single"), 2)
         self.assertEqual(calculate_result_points("C", rank=4, program_type="single"), 1)
 
-        # No grade -> 0 points even if rank 1
-        self.assertEqual(calculate_result_points(None, rank=1, program_type="single"), 0)
-        self.assertEqual(calculate_result_points("", rank=2, program_type="single"), 0)
+        # No grade / under 50 -> gets position prize bonus (5 for 1st, 3 for 2nd, 1 for 3rd, 0 for 4th+)
+        self.assertEqual(calculate_result_points(None, rank=1, program_type="single"), 5)
+        self.assertEqual(calculate_result_points(None, rank=2, program_type="single"), 3)
+        self.assertEqual(calculate_result_points(None, rank=3, program_type="single"), 1)
+        self.assertEqual(calculate_result_points(None, rank=4, program_type="single"), 0)
+        self.assertEqual(calculate_result_points("", rank=2, program_type="single"), 3)
 
     def test_group_program_points(self):
         # A+ (base 15) + prizes (5, 3, 1)
@@ -82,8 +85,11 @@ class ScoringEngineTests(unittest.TestCase):
         self.assertEqual(calculate_result_points("C", rank=3, program_type="group"), 10)
         self.assertEqual(calculate_result_points("C", rank=4, program_type="group"), 9)
 
-        # No grade -> 0 points even if rank 1
-        self.assertEqual(calculate_result_points(None, rank=1, program_type="group"), 0)
+        # No grade / under 50 in group -> gets position prize bonus
+        self.assertEqual(calculate_result_points(None, rank=1, program_type="group"), 5)
+        self.assertEqual(calculate_result_points(None, rank=2, program_type="group"), 3)
+        self.assertEqual(calculate_result_points(None, rank=3, program_type="group"), 1)
+        self.assertEqual(calculate_result_points(None, rank=4, program_type="group"), 0)
 
     def test_custom_grade_rules(self):
         class MockRule:
