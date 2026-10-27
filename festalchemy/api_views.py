@@ -1737,9 +1737,9 @@ class PublicDashboardStatsAPIView(APIView):
         ordered_progs = [prog_by_id[pid] for pid in published_program_ids if pid in prog_by_id]
         progs_with_results_data = [{'id': p.id, 'name': p.name, 'category_name': p.category.name if p.category else ''} for p in ordered_progs]
 
-        # Recent results for top 3 published programs (top 3 ranks each) for home page spotlight (latest published first)
+        # Recent results for top 6 published programs (top 3 ranks each) for home page spotlight (latest published first)
         recent_results = []
-        spotlight_prog_ids = published_program_ids[:3]
+        spotlight_prog_ids = published_program_ids[:6]
         if spotlight_prog_ids:
             top_results = Result.objects.filter(
                 published=True, program_id__in=spotlight_prog_ids, rank__lte=3
