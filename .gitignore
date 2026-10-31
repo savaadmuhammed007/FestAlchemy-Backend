@@ -3,6 +3,8 @@ __pycache__/
 db.sqlite3
 .env
 media/
+!media/fonts/
+!media/fonts/**
 staticfiles/
 local_mysql_dump.json
 fest.sql

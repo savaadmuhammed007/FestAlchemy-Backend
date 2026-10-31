@@ -38,9 +38,16 @@ def generate_winner_poster(template_path, program, winners, fest_name="FestAlche
         
         # Strip space from family name (e.g. 'Playfair Display' -> 'PlayfairDisplay')
         filename_family = family.replace(' ', '')
+        stripped_family = family.replace(' ', '').replace('-', '')
         font_names = [
             f"{filename_family}-{weight}.ttf",
+            f"{filename_family}-{weight}.otf",
             f"{filename_family}-Regular.ttf",
+            f"{filename_family}-Regular.otf",
+            f"{stripped_family}-{weight}.ttf",
+            f"{stripped_family}-{weight}.otf",
+            f"{stripped_family}-Regular.ttf",
+            f"{stripped_family}-Regular.otf",
             f"Inter-{weight}.ttf",
             "Inter-Regular.ttf",
         ]
