@@ -2009,6 +2009,122 @@ class AdminReportsAPIView(APIView):
             fest_dates = fest.dates if fest else []
             return Response({'schedule': serializer.data, 'dates': fest_dates})
 
+        is_winner_type = any(term in report_type for term in ['winner', 'prize', 'programs_vise', 'program_wise', 'programwise']) or report_type in [
+            'winners', 'winner', 'winners_first', 'winners_second', 'winners_third', 
+            'winners_first_second', 'winners_program_wise', 'program_wise_winners', 
+            'first_winners', 'second_winners', 'third_winners', 'first_prize', 'second_prize', 'third_prize',
+            'programs_vise', 'programs_wise'
+        ]
+
+        if is_winner_type:
+            category_id = request.query_params.get('category')
+            program_id = request.query_params.get('program')
+            program_type_filter = request.query_params.get('program_type')  # 'all', 'single', 'group'
+            rank_param = request.query_params.get('rank')
+
+            # Determine rank filter based on report_type if not explicitly provided
+            if not rank_param:
+                if any(x in report_type for x in ['first_second', 'first_and_second', '1_2']):
+                    ranks = [1, 2]
+                elif any(x in report_type for x in ['first', '1st', '1']) and 'program' not in report_type:
+                    ranks = [1]
+                elif any(x in report_type for x in ['second', '2nd', '2']) and 'program' not in report_type:
+                    ranks = [2]
+                elif any(x in report_type for x in ['third', 'thirt', '3rd', '3']) and 'program' not in report_type:
+                    ranks = [3]
+                else:
+                    ranks = [1, 2, 3]
+            else:
+                try:
+                    ranks = [int(r.strip()) for r in rank_param.split(',') if r.strip()]
+                except ValueError:
+                    ranks = [1, 2, 3]
+
+            qs = Result.objects.filter(
+                rank__in=ranks
+            ).select_related('program', 'program__category', 'member', 'member__team', 'member__category')
+
+            if category_id:
+                qs = qs.filter(program__category_id=category_id)
+            if program_id:
+                if ',' in program_id:
+                    pids = [pid.strip() for pid in program_id.split(',') if pid.strip()]
+                    qs = qs.filter(program_id__in=pids)
+                else:
+                    qs = qs.filter(program_id=program_id)
+            if program_type_filter and program_type_filter in ['single', 'group']:
+                qs = qs.filter(program__type=program_type_filter)
+
+            # Order by category, program name, rank, marks desc, member name
+            results = list(qs.order_by('program__category__name', 'program__name', 'rank', '-total_marks', 'member__name'))
+
+            # Identify ties: count winners per (program_id, rank)
+            from collections import Counter
+            tie_counter = Counter((r.program_id, r.rank) for r in results)
+
+            winners_list = []
+            for r in results:
+                count_for_rank = tie_counter.get((r.program_id, r.rank), 1)
+                is_tie = count_for_rank > 1
+                rank_str = '1st' if r.rank == 1 else '2nd' if r.rank == 2 else '3rd' if r.rank == 3 else f'{r.rank}th'
+                winners_list.append({
+                    'id': r.id,
+                    'rank': r.rank,
+                    'rank_text': rank_str,
+                    'is_tie': is_tie,
+                    'tie_count': count_for_rank,
+                    'member_id': r.member.id if r.member else None,
+                    'member_name': r.member.name if r.member else 'Unknown',
+                    'chest_no': r.member.chest_no if (r.member and r.member.chest_no) else None,
+                    'team_id': r.member.team.id if (r.member and r.member.team) else None,
+                    'team_name': r.member.team.name if (r.member and r.member.team) else '—',
+                    'program_id': r.program.id,
+                    'program_name': r.program.name,
+                    'program_type': r.program.type,  # 'single' or 'group'
+                    'category_id': r.program.category.id if r.program.category else None,
+                    'category_name': r.program.category.name if r.program.category else '—',
+                    'total_marks': r.total_marks,
+                    'grade': r.grade or '—',
+                    'points': r.points,
+                    'published': r.published,
+                })
+
+            # Group results for program-wise view
+            program_map = {}
+            for w in winners_list:
+                pid = w['program_id']
+                if pid not in program_map:
+                    program_map[pid] = {
+                        'program_id': pid,
+                        'program_name': w['program_name'],
+                        'program_type': w['program_type'],
+                        'category_id': w['category_id'],
+                        'category_name': w['category_name'],
+                        'has_ties': False,
+                        'winners_by_rank': {1: [], 2: [], 3: []},
+                        'winners': []
+                    }
+                if w['is_tie']:
+                    program_map[pid]['has_ties'] = True
+                program_map[pid]['winners'].append(w)
+                if w['rank'] in program_map[pid]['winners_by_rank']:
+                    program_map[pid]['winners_by_rank'][w['rank']].append(w)
+                else:
+                    program_map[pid]['winners_by_rank'][w['rank']] = [w]
+
+            programs_wise = list(program_map.values())
+
+            return Response({
+                'status': 'ok',
+                'report_type': report_type,
+                'ranks_included': ranks,
+                'total_winners': len(winners_list),
+                'total_programs': len(programs_wise),
+                'total_ties': sum(1 for w in winners_list if w['is_tie']),
+                'winners': winners_list,
+                'programs_wise': programs_wise,
+            })
+
         is_lot_type = any(term in report_type for term in ['lot', 'spin', 'call', 'sign', 'sheet']) or report_type in [
             'lots', 'lot', 'spinned_lots', 'spinned_lot', 'spinnedlots', 'spinnedlot', 
             'calling', 'callings', 'calling_list', 'calling_lists', 'spin', 'spins', 
