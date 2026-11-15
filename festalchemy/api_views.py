@@ -2385,3 +2385,208 @@ class PosterRenderAPIView(APIView):
             response['Content-Disposition'] = f'attachment; filename="poster_{safe_name}.png"'
 
         return response
+
+
+class IndividualPerformanceAPIView(APIView):
+    """
+    Public and Admin API for individual participant performance.
+    Provides complete breakdown of each participant's programs, prizes (1st, 2nd, 3rd),
+    grades (A, B, C), marks, and points, with filtering by prize, category, team, and search.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        category_param = request.query_params.get('category')
+        team_param = request.query_params.get('team')
+        prize_param = (request.query_params.get('prize') or 'all').strip().lower()
+        type_param = (request.query_params.get('type') or 'all').strip().lower()
+        search_query = (request.query_params.get('search') or '').strip()
+        sort_by = (request.query_params.get('sort') or 'points').strip().lower()
+
+        results_qs = Result.objects.filter(published=True).select_related(
+            'program', 'program__category',
+            'member', 'member__team', 'member__category'
+        )
+
+        if type_param == 'single':
+            results_qs = results_qs.filter(program__type='single')
+        elif type_param == 'group':
+            results_qs = results_qs.filter(program__type='group')
+
+        if category_param and str(category_param).upper() != 'ALL':
+            if str(category_param).isdigit():
+                results_qs = results_qs.filter(
+                    Q(member__category_id=category_param) | Q(program__category_id=category_param)
+                )
+            else:
+                results_qs = results_qs.filter(
+                    Q(member__category__name__iexact=category_param) | Q(program__category__name__iexact=category_param)
+                )
+
+        if team_param and str(team_param).upper() != 'ALL':
+            if str(team_param).isdigit():
+                results_qs = results_qs.filter(member__team_id=team_param)
+            else:
+                results_qs = results_qs.filter(member__team__name__iexact=team_param)
+
+        results_list = list(results_qs.order_by('program_id', 'rank', '-points'))
+
+        from collections import Counter
+        rank_counts = Counter((r.program_id, r.rank) for r in results_list if r.rank is not None)
+
+        members_map = {}
+        for r in results_list:
+            m = r.member
+            if not m:
+                continue
+            mid = m.id
+            if mid not in members_map:
+                members_map[mid] = {
+                    'member_id': mid,
+                    'member_name': m.name,
+                    'chest_no': m.chest_no,
+                    'team_id': m.team_id if m.team else None,
+                    'team_name': m.team.name if m.team else 'Independent',
+                    'category_id': m.category_id if m.category else None,
+                    'category_name': m.category.name if m.category else 'General',
+                    'total_points': 0.0,
+                    'events_count': 0,
+                    'prizes_count': {
+                        'first': 0,
+                        'second': 0,
+                        'third': 0,
+                        'total': 0
+                    },
+                    'grades_count': {},
+                    'best_rank': None,
+                    'programs': []
+                }
+
+            is_tie = rank_counts.get((r.program_id, r.rank), 0) > 1
+            pts = float(r.points or 0.0)
+            members_map[mid]['total_points'] += pts
+            members_map[mid]['events_count'] += 1
+
+            if r.rank == 1:
+                members_map[mid]['prizes_count']['first'] += 1
+                members_map[mid]['prizes_count']['total'] += 1
+            elif r.rank == 2:
+                members_map[mid]['prizes_count']['second'] += 1
+                members_map[mid]['prizes_count']['total'] += 1
+            elif r.rank == 3:
+                members_map[mid]['prizes_count']['third'] += 1
+                members_map[mid]['prizes_count']['total'] += 1
+
+            if r.rank is not None:
+                curr_best = members_map[mid]['best_rank']
+                if curr_best is None or r.rank < curr_best:
+                    members_map[mid]['best_rank'] = r.rank
+
+            grade_val = (r.grade or '').strip().upper()
+            if grade_val:
+                members_map[mid]['grades_count'][grade_val] = members_map[mid]['grades_count'].get(grade_val, 0) + 1
+
+            prize_label = None
+            if r.rank == 1:
+                prize_label = "1st Prize"
+            elif r.rank == 2:
+                prize_label = "2nd Prize"
+            elif r.rank == 3:
+                prize_label = "3rd Prize"
+            elif r.rank is not None:
+                prize_label = f"Rank #{r.rank}"
+
+            prog_cat_name = r.program.category.name if (r.program and r.program.category) else members_map[mid]['category_name']
+
+            members_map[mid]['programs'].append({
+                'program_id': r.program_id,
+                'program_name': r.program.name,
+                'program_type': r.program.type,
+                'category_name': prog_cat_name,
+                'rank': r.rank,
+                'prize_title': prize_label,
+                'grade': r.grade or '',
+                'points': pts,
+                'total_marks': r.total_marks,
+                'is_tie': is_tie
+            })
+
+        performers_list = list(members_map.values())
+
+        for p in performers_list:
+            p['programs'].sort(key=lambda x: (x['rank'] if x['rank'] is not None else 999, -x['points']))
+            p['total_points'] = round(p['total_points'], 2)
+            p['has_first_prize'] = p['prizes_count']['first'] > 0
+            p['has_second_prize'] = p['prizes_count']['second'] > 0
+            p['has_third_prize'] = p['prizes_count']['third'] > 0
+
+        # Prize filtering options
+        if prize_param in ['1', 'first', '1st']:
+            performers_list = [p for p in performers_list if p['has_first_prize']]
+        elif prize_param in ['2', 'second', '2nd']:
+            performers_list = [p for p in performers_list if p['has_second_prize']]
+        elif prize_param in ['3', 'third', '3rd']:
+            performers_list = [p for p in performers_list if p['has_third_prize']]
+        elif prize_param in ['1_2', 'first_second', '1_and_2', '1_2nd']:
+            performers_list = [p for p in performers_list if p['has_first_prize'] or p['has_second_prize']]
+        elif prize_param in ['top3', 'prizes', 'any_prize', 'winners']:
+            performers_list = [p for p in performers_list if p['prizes_count']['total'] > 0]
+
+        # Search query matching
+        if search_query:
+            sq = search_query.lower()
+            filtered = []
+            for p in performers_list:
+                match_name = sq in p['member_name'].lower()
+                match_chest = sq in str(p['chest_no'] or '')
+                match_team = sq in p['team_name'].lower()
+                match_cat = sq in p['category_name'].lower()
+                match_prog = any(sq in pr['program_name'].lower() for pr in p['programs'])
+                if match_name or match_chest or match_team or match_cat or match_prog:
+                    filtered.append(p)
+            performers_list = filtered
+
+        # Sorting options
+        if sort_by == 'name':
+            performers_list.sort(key=lambda x: x['member_name'].lower())
+        elif sort_by == 'chest_no':
+            performers_list.sort(key=lambda x: (x['chest_no'] is None, x['chest_no'] or 0))
+        elif sort_by == 'prizes':
+            performers_list.sort(key=lambda x: (
+                -x['prizes_count']['first'],
+                -x['prizes_count']['second'],
+                -x['prizes_count']['third'],
+                -x['total_points']
+            ))
+        else: # 'points'
+            performers_list.sort(key=lambda x: (
+                -x['total_points'],
+                -x['prizes_count']['first'],
+                -x['prizes_count']['second'],
+                x['best_rank'] if x['best_rank'] else 999
+            ))
+
+        for idx, p in enumerate(performers_list, 1):
+            p['leaderboard_rank'] = idx
+
+        # Dropdown options and summary stats
+        all_categories = list(Category.objects.values('id', 'name').order_by('name'))
+        all_teams = list(Team.objects.values('id', 'name').order_by('name'))
+
+        total_first = sum(p['prizes_count']['first'] for p in performers_list)
+        total_second = sum(p['prizes_count']['second'] for p in performers_list)
+        total_third = sum(p['prizes_count']['third'] for p in performers_list)
+        total_pts = round(sum(p['total_points'] for p in performers_list), 2)
+
+        return Response({
+            'performers': performers_list,
+            'total_count': len(performers_list),
+            'meta': {
+                'total_first_prizes': total_first,
+                'total_second_prizes': total_second,
+                'total_third_prizes': total_third,
+                'total_points_awarded': total_pts,
+                'categories': all_categories,
+                'teams': all_teams
+            }
+        })

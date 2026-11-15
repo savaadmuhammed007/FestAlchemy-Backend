@@ -10,7 +10,8 @@ from .api_views import (
     AdminBootstrapAPIView,
     AdminReportsAPIView,
     GlobalPosterTemplateViewSet, PosterRenderAPIView,
-    ActivityLogViewSet
+    ActivityLogViewSet,
+    IndividualPerformanceAPIView
 )
 
 router = DefaultRouter()
@@ -42,6 +43,8 @@ urlpatterns = [
     path('admin/bootstrap/', AdminBootstrapAPIView.as_view(), name='api-admin-bootstrap'),
     path('admin/stats/', AdminDashboardStatsAPIView.as_view(), name='api-admin-stats'),
     path('public/stats/', PublicDashboardStatsAPIView.as_view(), name='api-public-stats'),
+    path('public/performers/', IndividualPerformanceAPIView.as_view(), name='api-public-performers'),
+    path('individual-performance/', IndividualPerformanceAPIView.as_view(), name='api-individual-performance'),
     path('reports/', AdminReportsAPIView.as_view(), name='api-reports'),
 
     # Poster Rendering
